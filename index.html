@@ -466,6 +466,7 @@
 
   .table-scroll{
     overflow-x: auto;
+    overflow-y: visible;
     -webkit-overflow-scrolling: touch;
   }
   table{
@@ -1061,6 +1062,16 @@
   <div style="color:#33413a;font-size:15px;font-weight:600;">جارى تحميل البيانات من السحابة...</div>
   <style>@keyframes cloudSpin{to{transform:rotate(360deg);}}</style>
 </div>
+<div id="systemLockOverlay" style="display:none; position:fixed; inset:0; background:#1F3B57; z-index:100000; align-items:center; justify-content:center; font-family:'Cairo',sans-serif; padding:16px; box-sizing:border-box;">
+  <div style="background:#fff; border-radius:16px; padding:32px 28px; width:min(360px,92vw); box-shadow:0 20px 60px rgba(0,0,0,.35); text-align:center;">
+    <div style="font-size:36px; margin-bottom:10px;">🔒</div>
+    <h2 style="margin:0 0 6px; font-size:18px; color:#1F3B57;">النظام مقفول</h2>
+    <p style="margin:0 0 18px; font-size:13px; color:#667; line-height:1.8;">من فضلك ادخل كلمة السر عشان تفتح النظام</p>
+    <input type="password" id="lockScreenInput" placeholder="كلمة السر" autocomplete="off" style="width:100%; padding:11px 14px; border-radius:10px; border:1.5px solid #ccd6dd; font-family:'Cairo'; font-size:14px; margin-bottom:10px; box-sizing:border-box; text-align:center;">
+    <div id="lockScreenError" style="color:#c0392b; font-size:12.5px; font-weight:700; min-height:18px; margin-bottom:8px;"></div>
+    <button type="button" id="lockScreenSubmit" style="width:100%; padding:11px; border:none; border-radius:10px; background:#2F7A6E; color:#fff; font-family:'Cairo'; font-weight:700; font-size:14px; cursor:pointer;">🔓 دخول</button>
+  </div>
+</div>
 <div class="wrap">
 
   <header class="page">
@@ -1603,6 +1614,28 @@
       <button type="button" class="add-row" id="dirAutoScanBtn" style="background:#2F7A6E;">🔄 تحديث تلقائى من البيانات</button>
     </div>
     <div id="dirScanMsg" style="margin-top:10px; font-size:12.5px; color: var(--teal); font-weight:700; display:none;"></div>
+
+    <div style="margin-top:22px; padding-top:18px; border-top:1px dashed var(--line, #ddd);">
+      <h3 style="font-size:14.5px; margin:0 0 6px;">💾 نسخة احتياطية شاملة لكل النظام</h3>
+      <p style="color:var(--ink-soft); font-size:12.5px; margin:0 0 14px; line-height:1.9;">
+        زرار "حفظ نسخة" بياخد نسخة كاملة من كل حاجة على النظام فى الجهاز ده: الشركتين، كل الخزنات ومراكز التكلفة، اليوميات المرحّلة، حركة اليوم لكل خزنة، الأرصدة الافتتاحية، عد النقدية، قيود الاستلام، وأرشيف السنين القديمة — فى ملف JSON واحد تقدر تحتفظ بيه كنسخة أمان.
+        زرار "استرجاع نسخة" بيستبدل كل بيانات النظام الحالية ببيانات الملف اللى هتختاره، فاستخدمه بحذر لأنه مش رجوع فيه.
+      </p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="button" class="add-row" id="fullBackupBtn" style="background:#2F5D8A;color:#fff;">💾 حفظ نسخة شاملة (كل النظام)</button>
+        <button type="button" class="add-row" id="fullRestoreBtn" style="background:#B5482E;color:#fff;">📂 استرجاع نسخة شاملة (كل النظام)</button>
+        <input type="file" id="fullRestoreFile" accept=".json" style="display:none;">
+      </div>
+    </div>
+  </div>
+
+  <div class="report-card" id="systemLockCard">
+    <h2 class="section-title">🔒 قفل النظام</h2>
+    <p style="color:var(--ink-soft); font-size:12.5px; margin:0 0 14px; line-height:1.9;">
+      تقدر تقفل النظام بكلمة سر عشان محدش يفتحه غيرك، أو تسيبه مفتوح من غير كلمة سر خالص. لو قفلته، هتتطلب كلمة السر أول مرة تفتح فيها المتصفح أو التاب، ومش هتتكرر تانى غير لما تقفل التاب أو المتصفح وتفتحه من جديد.
+    </p>
+    <div id="lockStatusBox" style="margin-bottom:14px; font-size:13.5px; font-weight:800;"></div>
+    <div id="lockFormArea"></div>
   </div>
 
   <div class="report-card" id="dirGroupsWrap">
@@ -2040,6 +2073,42 @@
   await window.__cloudReady;
   const _cloudOverlay = document.getElementById('cloudLoadingOverlay');
   if(_cloudOverlay) _cloudOverlay.remove();
+
+  /* ---------- قفل النظام بكلمة سر (اختيارى) ---------- */
+  const LOCK_ENABLED_KEY = 'khazna_lock_enabled_v1';
+  const LOCK_PASSWORD_KEY = 'khazna_lock_password_v1';
+  const LOCK_SESSION_KEY = 'khazna_unlocked_session_v1';
+
+  function isSystemLocked(){ return localStorage.getItem(LOCK_ENABLED_KEY) === '1' && !!localStorage.getItem(LOCK_PASSWORD_KEY); }
+  function getSystemPassword(){ return localStorage.getItem(LOCK_PASSWORD_KEY) || ''; }
+  function isUnlockedThisSession(){ return sessionStorage.getItem(LOCK_SESSION_KEY) === '1'; }
+
+  function showLockScreenIfNeeded(){
+    return new Promise(resolve => {
+      if(!isSystemLocked() || isUnlockedThisSession()){ resolve(); return; }
+      const overlay = document.getElementById('systemLockOverlay');
+      const input = document.getElementById('lockScreenInput');
+      const errBox = document.getElementById('lockScreenError');
+      const submitBtn = document.getElementById('lockScreenSubmit');
+      overlay.style.display = 'flex';
+      function tryUnlock(){
+        if(input.value !== '' && input.value === getSystemPassword()){
+          sessionStorage.setItem(LOCK_SESSION_KEY, '1');
+          overlay.style.display = 'none';
+          resolve();
+        } else {
+          errBox.textContent = 'كلمة السر غلط، حاول تانى';
+          input.value = '';
+          input.focus();
+        }
+      }
+      submitBtn.addEventListener('click', tryUnlock);
+      input.addEventListener('keydown', e => { if(e.key === 'Enter') tryUnlock(); });
+      setTimeout(() => input.focus(), 100);
+    });
+  }
+
+  await showLockScreenIfNeeded();
 
   const LEGACY_STORAGE_KEY = 'khazna_ledger_rows_v1';
   const LEGACY_PREV_KEY = 'khazna_ledger_prev_v1';
@@ -2818,6 +2887,7 @@
   colgroup .col-date{ width:78px; }
   colgroup .col-pay{ width:100px; }
   colgroup .col-num{ width:90px; }
+  colgroup .col-text{ width:90px; }
   thead th{
     background: linear-gradient(95deg,#2F7A6E,#21594F);
     color:#fff;
@@ -3513,6 +3583,109 @@
     return added;
   }
 
+  /* ---------- واجهة إدارة قفل النظام فى صفحة دليل الحسابات ---------- */
+  function renderSystemLockSection(){
+    const statusBox = document.getElementById('lockStatusBox');
+    const formArea = document.getElementById('lockFormArea');
+    if(!statusBox || !formArea) return;
+
+    if(isSystemLocked()){
+      statusBox.innerHTML = '🔒 <span style="color:#B5482E;">النظام مقفول حاليًا بكلمة سر</span>';
+      formArea.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:14px; max-width:360px;">
+          <div>
+            <label style="display:block; font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:6px;">كلمة السر الحالية</label>
+            <input type="password" id="lockCurrentPass" autocomplete="off" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid var(--line); font-family:'Cairo'; font-size:13.5px; box-sizing:border-box;">
+          </div>
+          <div id="lockChangeArea" style="display:none; flex-direction:column; gap:10px;">
+            <div>
+              <label style="display:block; font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:6px;">كلمة السر الجديدة</label>
+              <input type="password" id="lockNewPass" autocomplete="off" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid var(--line); font-family:'Cairo'; font-size:13.5px; box-sizing:border-box;">
+            </div>
+            <div>
+              <label style="display:block; font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:6px;">تأكيد كلمة السر الجديدة</label>
+              <input type="password" id="lockNewPass2" autocomplete="off" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid var(--line); font-family:'Cairo'; font-size:13.5px; box-sizing:border-box;">
+            </div>
+          </div>
+          <div id="lockFormMsg" style="font-size:12.5px; font-weight:700; color:#B5482E; display:none;"></div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button type="button" class="add-row" id="lockToggleChangeBtn" style="background:#2F5D8A; color:#fff;">🔁 تغيير كلمة السر</button>
+            <button type="button" class="add-row" id="lockConfirmChangeBtn" style="background:#2F7A6E; color:#fff; display:none;">✅ حفظ كلمة السر الجديدة</button>
+            <button type="button" class="add-row" id="lockUnlockBtn" style="background:#B5482E; color:#fff;">🔓 اسيب النظام مفتوح (إلغاء القفل)</button>
+          </div>
+        </div>
+      `;
+
+      const msgEl = document.getElementById('lockFormMsg');
+      const showMsg = (text) => { msgEl.textContent = text; msgEl.style.display = 'block'; };
+
+      document.getElementById('lockToggleChangeBtn').addEventListener('click', () => {
+        const area = document.getElementById('lockChangeArea');
+        const confirmBtn = document.getElementById('lockConfirmChangeBtn');
+        const showing = area.style.display === 'flex';
+        area.style.display = showing ? 'none' : 'flex';
+        confirmBtn.style.display = showing ? 'none' : 'inline-block';
+      });
+
+      document.getElementById('lockConfirmChangeBtn').addEventListener('click', () => {
+        const current = document.getElementById('lockCurrentPass').value;
+        const next = document.getElementById('lockNewPass').value;
+        const next2 = document.getElementById('lockNewPass2').value;
+        if(current !== getSystemPassword()){ showMsg('كلمة السر الحالية غلط.'); return; }
+        if(!next){ showMsg('من فضلك اكتب كلمة سر جديدة.'); return; }
+        if(next !== next2){ showMsg('كلمة السر الجديدة والتأكيد مش متطابقين.'); return; }
+        localStorage.setItem(LOCK_PASSWORD_KEY, next);
+        showMsg('✅ تم تغيير كلمة السر بنجاح.');
+        msgEl.style.color = '#2F7A6E';
+        document.getElementById('lockCurrentPass').value = '';
+        document.getElementById('lockNewPass').value = '';
+        document.getElementById('lockNewPass2').value = '';
+      });
+
+      document.getElementById('lockUnlockBtn').addEventListener('click', () => {
+        const current = document.getElementById('lockCurrentPass').value;
+        if(current !== getSystemPassword()){ showMsg('كلمة السر الحالية غلط.'); return; }
+        if(!confirm('هيتم إلغاء قفل النظام، وأى حد هيقدر يفتحه من غير كلمة سر. تحب تكمل؟')) return;
+        localStorage.setItem(LOCK_ENABLED_KEY, '0');
+        sessionStorage.removeItem(LOCK_SESSION_KEY);
+        renderSystemLockSection();
+      });
+
+    } else {
+      statusBox.innerHTML = '🔓 <span style="color:#2F7A6E;">النظام مفتوح حاليًا (من غير كلمة سر)</span>';
+      formArea.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:14px; max-width:360px;">
+          <div>
+            <label style="display:block; font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:6px;">كلمة سر جديدة</label>
+            <input type="password" id="lockNewPass" autocomplete="off" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid var(--line); font-family:'Cairo'; font-size:13.5px; box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="display:block; font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:6px;">تأكيد كلمة السر</label>
+            <input type="password" id="lockNewPass2" autocomplete="off" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid var(--line); font-family:'Cairo'; font-size:13.5px; box-sizing:border-box;">
+          </div>
+          <div id="lockFormMsg" style="font-size:12.5px; font-weight:700; color:#B5482E; display:none;"></div>
+          <div>
+            <button type="button" class="add-row" id="lockEnableBtn" style="background:#B8862E; color:#fff;">🔒 قفل النظام بكلمة السر دي</button>
+          </div>
+        </div>
+      `;
+
+      const msgEl = document.getElementById('lockFormMsg');
+      const showMsg = (text) => { msgEl.textContent = text; msgEl.style.display = 'block'; };
+
+      document.getElementById('lockEnableBtn').addEventListener('click', () => {
+        const next = document.getElementById('lockNewPass').value;
+        const next2 = document.getElementById('lockNewPass2').value;
+        if(!next){ showMsg('من فضلك اكتب كلمة سر.'); return; }
+        if(next !== next2){ showMsg('كلمة السر والتأكيد مش متطابقين.'); return; }
+        localStorage.setItem(LOCK_PASSWORD_KEY, next);
+        localStorage.setItem(LOCK_ENABLED_KEY, '1');
+        sessionStorage.setItem(LOCK_SESSION_KEY, '1'); // اللى قافل دلوقتى مايتطلبش منه يدخل كلمة السر تانى فورًا
+        renderSystemLockSection();
+      });
+    }
+  }
+
   function renderDirectoryPage(){
     const dir = loadDirectory();
     const wrap = document.getElementById('dirGroupsWrap');
@@ -3874,6 +4047,81 @@
       : `الدليل محدّث بالفعل، مفيش بنود جديدة اتلاقت فى الحركات.`;
   });
 
+  /* ---------- نسخة احتياطية شاملة لكل النظام (كل مفاتيح خزنة المخزّنة محليًا) ----------
+     ده منفصل عن نسخة اليومية بتاعة كل شركة لوحدها: هنا بناخد كل حاجة مرة واحدة
+     (الشركتين + اليوميات + حركة اليوم + الدليل + الأرصدة الافتتاحية + عد النقدية +
+     قيود الاستلام + أرشيف السنين القديمة) فى ملف JSON واحد، عشان تقدر تحتفظ بيه
+     كنسخة أمان كاملة أو تنقلها لجهاز/متصفح تانى. */
+  document.getElementById('fullBackupBtn').addEventListener('click', () => {
+    const data = {};
+    Object.keys(localStorage)
+      .filter(k => k.indexOf('khazna_') === 0)
+      .forEach(k => { data[k] = localStorage.getItem(k); });
+    if(Object.keys(data).length === 0){
+      alert('لا توجد أى بيانات محفوظة على هذا الجهاز حتى الآن لعمل نسخة منها.');
+      return;
+    }
+    const payload = {
+      system: 'khazna-ledger',
+      type: 'full-system-backup',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      data
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `نسخة_شاملة_خزنة_${todayISO()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  (function(){
+    const restoreBtn = document.getElementById('fullRestoreBtn');
+    const restoreFile = document.getElementById('fullRestoreFile');
+    restoreBtn.addEventListener('click', () => restoreFile.click());
+    restoreFile.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      restoreFile.value = '';
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        let parsed;
+        try{
+          parsed = JSON.parse(ev.target.result);
+        }catch(err){
+          alert('الملف المختار مش ملف نسخة شاملة صالح (JSON غير سليم).');
+          return;
+        }
+        const incoming = (parsed && typeof parsed.data === 'object' && parsed.data) ? parsed.data : null;
+        if(!incoming || Object.keys(incoming).length === 0 || Object.keys(incoming).some(k => k.indexOf('khazna_') !== 0)){
+          alert('الملف المختار مش ملف نسخة شاملة صالح لنظام الخزنة.');
+          return;
+        }
+        const newCount = Object.keys(incoming).length;
+        const exportedAtLabel = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString('ar-EG') : 'غير معروف';
+        const sure = confirm(
+          `تحذير: هيتم استبدال كل بيانات النظام الحالية على هذا الجهاز (الشركتين، اليوميات، حركة اليوم، الدليل، الأرصدة الافتتاحية، عد النقدية، الأرشيف... إلخ) ببيانات هذا الملف (${newCount} عنصر بيانات)، والملف ده اتصدّر بتاريخ: ${exportedAtLabel}.\n\n` +
+          `هذا الإجراء لا يمكن التراجع عنه إلا باسترجاع نسخة أخرى. هل أنت متأكد إنك عايز تكمل؟`
+        );
+        if(!sure) return;
+
+        Object.keys(localStorage)
+          .filter(k => k.indexOf('khazna_') === 0 && !(k in incoming))
+          .forEach(k => localStorage.removeItem(k));
+        Object.keys(incoming).forEach(k => localStorage.setItem(k, incoming[k]));
+
+        alert('✅ تم استرجاع النسخة الشاملة بنجاح، وهيتم تحديث الصفحة الآن.');
+        location.reload();
+      };
+      reader.onerror = () => alert('تعذر قراءة الملف، برجاء المحاولة مرة أخرى.');
+      reader.readAsText(file);
+    });
+  })();
+
   // datalists توضع فى مكان واحد بالصفحة وتُستخدم من كل حقول مركز التكلفة/مصدر الصرف/المصروف يخص/مستلم الصرف
   function ensureDirectoryDatalistsInDom(){
     if(document.getElementById('dl-costCenters')) return;
@@ -4119,6 +4367,16 @@
     return '';
   }
 
+  // عمود "البيان" هو الوحيد اللى مالوش عرض ثابت، فياخد تلقائيًا كل المساحة المتبقية
+  // من الجدول (table-layout:fixed) — وباقى الأعمدة بعروض صغيرة وثابتة عشان تسيبله مساحة أكبر
+  function reportColWidthClass(col){
+    if(col === 'date')  return 'col-date';
+    if(col === 'pay')   return 'col-pay';
+    if(['debit','credit','balance'].includes(col)) return 'col-num';
+    if(col === 'desc')  return '';
+    return 'col-text'; // الشركة / مركز التكلفة / مصدر العهدة / المصروف يخص / مستلم الصرف
+  }
+
   function renderReportsPage(){
     const cols = getReportColumns();
     const { perAccount } = buildReportData();
@@ -4231,7 +4489,6 @@
 
       const rowsHtml = mergedRows.length ? mergedRows.map((r, idx) => `
         <tr>
-          <td class="idx">${idx+1}</td>
           ${displayCols.map(c => {
             if(c === 'debit')  return `<td class="num pos">${r.debit ? fmt(r.debit) : '—'}</td>`;
             if(c === 'credit') return `<td class="num neg">${r.credit ? fmt(r.credit) : '—'}</td>`;
@@ -4239,19 +4496,20 @@
             return `<td>${reportColumnCell(r, c)}</td>`;
           }).join('')}
         </tr>
-      `).join('') : `<tr><td colspan="${displayCols.length+1}" class="empty-cell">لا توجد حركات مسجلة فى هذه الفترة</td></tr>`;
+      `).join('') : `<tr><td colspan="${displayCols.length}" class="empty-cell">لا توجد حركات مسجلة فى هذه الفترة</td></tr>`;
 
       sectionsHtml = `
         <div class="section-title"><span class="bar"></span> تفاصيل الحركات</div>
         <div class="ledger-wrap">
         <table>
+          <colgroup>${displayCols.map(c => `<col class="${reportColWidthClass(c)}">`).join('')}</colgroup>
           <thead>
-            <tr><th>#</th>${displayCols.map(c => `<th>${escapeHtml((REPORT_COLUMNS.find(rc => rc.key === c) || {label:''}).label)}</th>`).join('')}</tr>
+            <tr>${displayCols.map(c => `<th>${escapeHtml((REPORT_COLUMNS.find(rc => rc.key === c) || {label:''}).label)}</th>`).join('')}</tr>
           </thead>
           <tbody>${rowsHtml}</tbody>
           <tfoot>
             <tr>
-              <td colspan="${1 + displayCols.filter(c => !['debit','credit'].includes(c)).length}">الإجمالى العام</td>
+              <td colspan="${displayCols.filter(c => !['debit','credit'].includes(c)).length}">الإجمالى العام</td>
               ${displayCols.includes('debit')  ? `<td class="num pos">${fmt(grandDebit)}</td>` : ''}
               ${displayCols.includes('credit') ? `<td class="num neg">${fmt(grandCredit)}</td>` : ''}
             </tr>
@@ -4264,7 +4522,6 @@
       sectionsHtml = perAccount.map(a => {
         const rowsHtml = a.rows.length ? a.rows.map((r, idx) => `
           <tr>
-            <td class="idx">${idx+1}</td>
             ${cols.map(c => {
               if(c === 'debit')   return `<td class="num pos">${r.debit ? fmt(r.debit) : '—'}</td>`;
               if(c === 'credit')  return `<td class="num neg">${r.credit ? fmt(r.credit) : '—'}</td>`;
@@ -4273,19 +4530,20 @@
               return `<td>${reportColumnCell(r, c)}</td>`;
             }).join('')}
           </tr>
-        `).join('') : `<tr><td colspan="${cols.length+1}" class="empty-cell">لا توجد حركات مسجلة فى هذه الفترة</td></tr>`;
+        `).join('') : `<tr><td colspan="${cols.length}" class="empty-cell">لا توجد حركات مسجلة فى هذه الفترة</td></tr>`;
 
         return `
           <div class="section-title"><span class="bar"></span> ${escapeHtml(a.account)} — رصيد أول المدة ${fmt(a.opening)} • رصيد آخر المدة ${fmt(a.closing)}</div>
           <div class="ledger-wrap">
           <table>
+            <colgroup>${cols.map(c => `<col class="${reportColWidthClass(c)}">`).join('')}</colgroup>
             <thead>
-              <tr><th>#</th>${cols.map(c => `<th>${escapeHtml((REPORT_COLUMNS.find(rc => rc.key === c) || {label:''}).label)}</th>`).join('')}</tr>
+              <tr>${cols.map(c => `<th>${escapeHtml((REPORT_COLUMNS.find(rc => rc.key === c) || {label:''}).label)}</th>`).join('')}</tr>
             </thead>
             <tbody>${rowsHtml}</tbody>
             <tfoot>
               <tr>
-                <td colspan="${1 + cols.filter(c => !['debit','credit','balance'].includes(c)).length}">الإجمالى — ${escapeHtml(a.account)}</td>
+                <td colspan="${cols.filter(c => !['debit','credit','balance'].includes(c)).length}">الإجمالى — ${escapeHtml(a.account)}</td>
                 ${cols.includes('debit')   ? `<td class="num pos">${fmt(a.totalDebit)}</td>` : ''}
                 ${cols.includes('credit')  ? `<td class="num neg">${fmt(a.totalCredit)}</td>` : ''}
                 ${cols.includes('balance') ? `<td class="num">${fmt(a.closing)}</td>` : ''}
@@ -4427,6 +4685,7 @@
     }
     if(name === 'directory'){
       renderDirectoryPage();
+      renderSystemLockSection();
     }
   }
 
@@ -5831,6 +6090,17 @@
       return;
     }
 
+    // تفصيل الفئات النقدية اختيارى: لو المستخدم كتب أى عدد فيه، نتأكد إن إجماليه
+    // بيطابق المبلغ المكتوب فى خانة "المبلغ"، ولو مفيش تطابق نوريه تحذير قبل الحفظ
+    const denomTotal = denomGrandTotal(denoms);
+    if(denomTotal > 0 && Math.abs(denomTotal - amount) > 0.009){
+      const proceedAnyway = confirm(
+        `⚠️ تحذير: إجمالى تفصيل الفئات النقدية (${fmt(denomTotal)} ج.م) لا يطابق المبلغ المكتوب فى خانة "المبلغ" (${fmt(amount)} ج.م).\n\n` +
+        `اضغط "موافق" لحفظ الإيصال بالمبلغ المكتوب كما هو رغم عدم التطابق، أو اضغط "إلغاء" للرجوع وتصحيح البيانات.`
+      );
+      if(!proceedAnyway) return;
+    }
+
     const list = loadReceiptQueue();
 
     if(editingReceiptId){
@@ -5849,8 +6119,12 @@
         editedAt: new Date().toISOString()
       };
       saveReceiptQueue(list);
+      const savedReceipt = list[idx];
       cancelEditReceipt();
       renderReceiptQueue();
+      if(confirm('✅ تم حفظ تعديلات الإيصال. هل ترغب فى طباعته الآن؟')){
+        printReceiptsByList([savedReceipt]);
+      }
       return;
     }
 
@@ -5874,6 +6148,10 @@
     rf.reason.value = '';
     resetDenomForm();
     rf.amount.focus();
+
+    if(confirm('✅ تم حفظ الإيصال. هل ترغب فى طباعته الآن؟')){
+      printReceiptsByList([receipt]);
+    }
   }
 
   document.getElementById('rf_postBtn').addEventListener('click', postReceipt);
@@ -5954,6 +6232,11 @@
   *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   @page{ size:A4 portrait; margin:10mm 12mm; }
   body{ margin:0; background:#fff; font-family:'Cairo', sans-serif; }
+  /* المكنة اللى بتطبع الألوان باهتة: بنعوّض الضعف ده بزيادة تشبّع وتباين
+     كل الصفحة وقت الطباعة فعليًا، مع تقوية الحدود والخطوط فى العناصر تحتها */
+  @media print{
+    body{ filter: saturate(1.6) contrast(1.25); }
+  }
   .print-bar{ text-align:left; margin-bottom:14px; }
   .print-bar button{
     background:#1F3B57; color:#fff; border:none; border-radius:9px; padding:9px 18px;
@@ -5967,15 +6250,13 @@
     max-width:720px;
     min-height:460px;
     margin:0 auto 8mm;
-    border:3px solid #1F3B57;
+    border:4px solid #16283A;
     border-radius:14px;
     padding:12px 24px 10px;
-    background:
-      repeating-linear-gradient(45deg, rgba(184,134,46,0.06) 0px, rgba(184,134,46,0.06) 2px, transparent 2px, transparent 14px),
-      #FBF6EA;
-    box-shadow: inset 0 0 0 5px #fff, inset 0 0 0 6px #1F3B57;
+    background:#FBF6EA;
+    box-shadow: inset 0 0 0 5px #fff, inset 0 0 0 7px #16283A;
     font-family:'Cairo', sans-serif;
-    color:#1F2A24;
+    color:#000;
     display:flex;
     flex-direction:column;
     page-break-inside: avoid;
@@ -5983,33 +6264,33 @@
   }
   .receipt-card .r-header{
     display:flex; align-items:center; justify-content:space-between; gap:10px;
-    border-bottom:2px solid #B8862E; padding-bottom:7px; margin-bottom:8px;
+    border-bottom:3px solid #8C5A0F; padding-bottom:7px; margin-bottom:8px;
   }
   .receipt-card .r-header-left{ display:flex; align-items:center; gap:8px; font-size:22px; }
   .receipt-card .r-title{ text-align:left; }
-  .receipt-card .r-title .r-ar{ font-family:'Almarai', sans-serif; font-weight:800; font-size:18px; color:#1F3B57; }
-  .receipt-card .r-title .r-en{ font-size:10.5px; letter-spacing:2px; color:#8a8f92; font-weight:600; }
+  .receipt-card .r-title .r-ar{ font-family:'Almarai', sans-serif; font-weight:800; font-size:18px; color:#16283A; }
+  .receipt-card .r-title .r-en{ font-size:10.5px; letter-spacing:2px; color:#3E4750; font-weight:700; }
   .receipt-card .r-badge-wrap{ text-align:center; margin-top:5px; }
   .receipt-card .r-badge{
-    display:inline-block; padding:3px 16px; border:1.5px solid #1F3B57; border-radius:20px;
-    font-size:12.5px; font-weight:700; color:#1F3B57; background:#fff;
+    display:inline-block; padding:3px 16px; border:2px solid #16283A; border-radius:20px;
+    font-size:12.5px; font-weight:800; color:#16283A; background:#fff;
   }
   .receipt-card .r-row{ display:flex; align-items:baseline; gap:8px; margin:6px 0; font-size:13.5px; }
-  .receipt-card .r-row .r-label{ font-weight:700; color:#1F3B57; white-space:nowrap; }
+  .receipt-card .r-row .r-label{ font-weight:800; color:#16283A; white-space:nowrap; }
   .receipt-card .r-row .r-blank{
-    flex:1; border-bottom:1.5px dotted #9aa3a8; padding-bottom:2px; min-height:16px;
+    flex:1; border-bottom:2px solid #3E4750; padding-bottom:2px; min-height:16px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    font-weight:800; color:#12202E;
+    font-weight:800; color:#000;
   }
   .receipt-card .r-topline{ display:flex; justify-content:space-between; gap:14px; }
-  .receipt-card .r-topline span:not(.r-label){ font-weight:800; color:#12202E; }
-  .receipt-card .r-no{ font-weight:800; color:#B0392E; font-size:15px; }
-  .receipt-card .r-amount-row .r-amount-words{ font-size:11.5px; font-weight:800; color:#12202E; }
+  .receipt-card .r-topline span:not(.r-label){ font-weight:800; color:#000; }
+  .receipt-card .r-no{ font-weight:800; color:#7A1F1F; font-size:15px; }
+  .receipt-card .r-amount-row .r-amount-words{ font-size:11.5px; font-weight:800; color:#000; }
   .receipt-card .r-amount-box{
-    display:flex; align-items:center; gap:5px; background:#1F3B57; color:#fff; font-weight:700; font-size:12.5px;
+    display:flex; align-items:center; gap:5px; background:#16283A; color:#fff; font-weight:800; font-size:12.5px;
     padding:4px 10px; border-radius:6px; white-space:nowrap; flex-shrink:0;
   }
-  .receipt-card .r-amount-currency{ font-size:10.5px; font-weight:600; opacity:.85; }
+  .receipt-card .r-amount-currency{ font-size:10.5px; font-weight:700; opacity:1; }
   .receipt-card .r-footer{ display:flex; align-items:flex-end; justify-content:space-between; margin-top:auto; padding-top:10px; }
   .receipt-card .r-seal{
     width:64px; height:64px;
@@ -6018,30 +6299,30 @@
   .receipt-card .r-seal-img{
     width:100%; height:100%; object-fit:contain; display:block;
   }
-  .receipt-card .r-sign{ font-size:12px; color:#5B6B60; font-weight:600; text-align:center; }
+  .receipt-card .r-sign{ font-size:12px; color:#222; font-weight:700; text-align:center; }
   .receipt-card .r-sign-label{ margin-bottom:6px; }
-  .receipt-card .r-sign-line{ width:130px; height:24px; border-bottom:1.5px solid #9aa3a8; }
+  .receipt-card .r-sign-line{ width:130px; height:24px; border-bottom:2px solid #3E4750; }
   .receipt-card .r-denom-wrap{ margin:8px 0 2px; }
   .receipt-card .r-denom-table{
     width:100%; max-width:280px; margin-right:0; margin-left:auto;
-    border-collapse:collapse; font-size:9px; color:#1F2A24;
+    border-collapse:collapse; font-size:9px; color:#000;
   }
   .receipt-card .r-denom-table th, .receipt-card .r-denom-table td{
-    border:1px solid #c9beA0; padding:2px 6px; text-align:center;
+    border:1.5px solid #6B5D3A; padding:2px 6px; text-align:center;
   }
   .receipt-card .r-denom-table thead th{
-    background:#1F3B57; color:#fff; font-weight:800; font-size:9px;
+    background:#16283A; color:#fff; font-weight:800; font-size:9px;
   }
   .receipt-card .r-denom-table tbody td{ font-weight:800; color:#000; }
   .receipt-card .r-denom-table tbody td:first-child{ font-weight:800; color:#000; }
   .receipt-card .r-denom-table tfoot td{
-    background:#FBF6EA; font-weight:800; color:#000; border-top:1.5px solid #1F3B57;
+    background:#FBF6EA; font-weight:800; color:#000; border-top:2px solid #16283A;
   }
   .receipt-cut-mark{
     display:flex; align-items:center; justify-content:center; margin:0 auto 8mm; max-width:720px;
   }
-  .receipt-cut-mark::before, .receipt-cut-mark::after{ content:''; flex:1; border-top:1px dashed #b8b8b8; }
-  .receipt-cut-mark .dot{ display:flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; border:1.5px solid #b8b8b8; margin:0 8px; font-size:11px; color:#8a8f92; }
+  .receipt-cut-mark::before, .receipt-cut-mark::after{ content:''; flex:1; border-top:1.5px dashed #6b6b6b; }
+  .receipt-cut-mark .dot{ display:flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; border:2px solid #6b6b6b; margin:0 8px; font-size:11px; color:#444; }
 </style>
 </head>
 <body>
@@ -6049,6 +6330,23 @@
 ${cardsHtml}
 </body>
 </html>`;
+  }
+
+  // دالة مشتركة لطباعة أى قائمة إيصالات (سواء من قائمة الطباعة، أو إيصال واحد
+  // فور حفظه من الفورم) — عشان منكررش نفس كود فتح نافذة الطباعة فى أكتر من مكان
+  function printReceiptsByList(list){
+    if(!list || list.length === 0) return;
+    const html = buildReceiptsPrintHtml(list);
+    const win = window.open('', '_blank');
+    if(!win){
+      alert('برجاء السماح بفتح النوافذ المنبثقة (Pop-ups) لطباعة الإيصالات');
+      return;
+    }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 350);
   }
 
   document.getElementById('rq_printBtn').addEventListener('click', () => {
@@ -6062,17 +6360,7 @@ ${cardsHtml}
       alert('من فضلك حدد إيصالًا واحدًا على الأقل من القائمة للطباعة (أو استخدم مربع "تحديد الكل").');
       return;
     }
-    const html = buildReceiptsPrintHtml(list);
-    const win = window.open('', '_blank');
-    if(!win){
-      alert('برجاء السماح بفتح النوافذ المنبثقة (Pop-ups) لطباعة الإيصالات');
-      return;
-    }
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); }, 350);
+    printReceiptsByList(list);
   });
 
   renderReceiptQueue();
