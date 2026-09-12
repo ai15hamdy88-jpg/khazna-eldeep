@@ -1334,6 +1334,18 @@
             <label>بحث بالبيان</label>
             <input type="text" id="jSearch_first" placeholder="ابحث فى البيان...">
           </div>
+          <div class="filter-field">
+            <label>بحث بمركز التكلفة</label>
+            <input type="text" id="jCostCenter_first" list="dl-costCenters" placeholder="ابحث فى مركز التكلفة...">
+          </div>
+          <div class="filter-field">
+            <label>بحث بالمصروف يخص</label>
+            <input type="text" id="jExpenseFor_first" list="dl-expenseFors" placeholder="ابحث فى المصروف يخص...">
+          </div>
+          <div class="filter-field">
+            <label>بحث بمستلم الصرف</label>
+            <input type="text" id="jRecipient_first" list="dl-recipients" placeholder="ابحث فى مستلم الصرف...">
+          </div>
         </div>
 
         <div class="journal-stats" id="journalStats_first">
@@ -1417,6 +1429,18 @@
           <div class="filter-field">
             <label>بحث بالبيان</label>
             <input type="text" id="jSearch_nile" placeholder="ابحث فى البيان...">
+          </div>
+          <div class="filter-field">
+            <label>بحث بمركز التكلفة</label>
+            <input type="text" id="jCostCenter_nile" list="dl-costCenters" placeholder="ابحث فى مركز التكلفة...">
+          </div>
+          <div class="filter-field">
+            <label>بحث بالمصروف يخص</label>
+            <input type="text" id="jExpenseFor_nile" list="dl-expenseFors" placeholder="ابحث فى المصروف يخص...">
+          </div>
+          <div class="filter-field">
+            <label>بحث بمستلم الصرف</label>
+            <input type="text" id="jRecipient_nile" list="dl-recipients" placeholder="ابحث فى مستلم الصرف...">
           </div>
         </div>
 
@@ -2146,6 +2170,9 @@
       pay: document.getElementById('jPay_' + c.key),
       safe: document.getElementById('jSafe_' + c.key),
       search: document.getElementById('jSearch_' + c.key),
+      costCenter: document.getElementById('jCostCenter_' + c.key),
+      expenseFor: document.getElementById('jExpenseFor_' + c.key),
+      recipient: document.getElementById('jRecipient_' + c.key),
       tbody: document.getElementById('journalBody_' + c.key),
       empty: document.getElementById('journalEmpty_' + c.key),
       selectAllChk: document.getElementById('selectAllChk_' + c.key),
@@ -4794,6 +4821,9 @@
     const pay = u.pay.value;
     const safe = u.safe.value;
     const q = (u.search.value || '').trim().toLowerCase();
+    const qCostCenter = (u.costCenter.value || '').trim().toLowerCase();
+    const qExpenseFor = (u.expenseFor.value || '').trim().toLowerCase();
+    const qRecipient = (u.recipient.value || '').trim().toLowerCase();
 
     let list = loadJournal().filter(r => (r.company || '') === company.label);
     if(from) list = list.filter(r => (r.date || '') >= from);
@@ -4801,6 +4831,9 @@
     if(pay)  list = list.filter(r => r.pay === pay);
     if(safe) list = list.filter(r => r.pay === safe);
     if(q)    list = list.filter(r => (r.desc || '').toLowerCase().includes(q));
+    if(qCostCenter) list = list.filter(r => (r.costCenter || '').toLowerCase().includes(qCostCenter));
+    if(qExpenseFor) list = list.filter(r => (r.expenseFor || '').toLowerCase().includes(qExpenseFor));
+    if(qRecipient)  list = list.filter(r => (r.recipient || '').toLowerCase().includes(qRecipient));
 
     list.sort((a,b) => (a.date||'').localeCompare(b.date||'') || (a.postedAt||'').localeCompare(b.postedAt||''));
     return list;
@@ -4873,7 +4906,7 @@
 
   COMPANIES.forEach(c => {
     const u = journalUi[c.key];
-    [u.from, u.to, u.pay, u.safe, u.search].forEach(el => {
+    [u.from, u.to, u.pay, u.safe, u.search, u.costCenter, u.expenseFor, u.recipient].forEach(el => {
       el.addEventListener('input', () => renderCompanyJournal(c));
       el.addEventListener('change', () => renderCompanyJournal(c));
     });
