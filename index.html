@@ -1780,6 +1780,14 @@
     const JOURNAL_COLLECTION_REF = cloudDb.collection('khazna_journal_entries');
     const SESSION_ID = Math.random().toString(36).slice(2) + '_' + Date.now();
 
+    // علامتين محليتين (خارج بادئة khazna_ عشان متتزامنش هما نفسهم مع السحابة):
+    // بنحطهم فى نفس اللحظة اللي بيحصل فيها أى تعديل محلى، وبنشيلهم بس بعد
+    // ما نتأكد إن التعديل ده وصل فعلاً للسحابة. لو حصل ريفرش للصفحة والعلم
+    // لسه موجود، معناه إن فيه تعديل محلى ممكن يكون لسه معملوش رفع، فبدل ما
+    // نصدق نسخة السحابة (القديمة) ونمسح بيها المحلى، بنرفع المحلى الأول.
+    const PENDING_PUSH_FLAG = '__khazna_pending_push__';
+    const JOURNAL_PENDING_PUSH_FLAG = '__khazna_journal_pending_push__';
+
     let cloudPushTimer = null;
     let suppressNextSnapshot = false; // بنتجاهل أول Snapshot لأنه نفس اللي إحنا جبناه بالظبط
     let lastSyncedDataJSON = null; // آخر نسخة بيانات اتزامنت (سواء رفعناها أو نزلناها) عشان منبعتش تحديثات فاضية
@@ -1808,12 +1816,20 @@
       cloudPushTimer = setTimeout(() => {
         const currentData = collectLocalKhaznaData();
         const currentJSON = JSON.stringify(currentData);
-        if(currentJSON === lastSyncedDataJSON) return; // مفيش تغيير حقيقى، متبعتش حاجة
+        if(currentJSON === lastSyncedDataJSON){
+          // مفيش تغيير حقيقى عن آخر نسخة اتزامنت، يبقى مفيش داعى نفضل
+          // معلّمين البيانات دى "لسه معلقة"
+          _origRemoveItem.call(window.localStorage, PENDING_PUSH_FLAG);
+          return;
+        }
         lastSyncedDataJSON = currentJSON;
         CLOUD_DOC_REF.set({
           data: currentData,
           writer: SESSION_ID,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }).then(() => {
+          // اتأكدنا إن السحابة بقت فيها آخر نسخة محلية، تقدر تتمسح العلامة
+          _origRemoveItem.call(window.localStorage, PENDING_PUSH_FLAG);
         }).catch(err => console.error('فشل رفع البيانات لفايربيز:', err));
       }, 700);
     }
@@ -1858,7 +1874,10 @@
       journalPushTimer = setTimeout(async () => {
         const currentList = getLocalJournalArray();
         const currentJSON = JSON.stringify(currentList);
-        if(currentJSON === lastSyncedJournalJSON) return; // مفيش تغيير حقيقى
+        if(currentJSON === lastSyncedJournalJSON){
+          _origRemoveItem.call(window.localStorage, JOURNAL_PENDING_PUSH_FLAG);
+          return; // مفيش تغيير حقيقى
+        }
         let previousList = [];
         try{ previousList = lastSyncedJournalJSON ? JSON.parse(lastSyncedJournalJSON) : []; }catch(e){ previousList = []; }
         const prevById = new Map(previousList.map(r => [r.id, r]));
@@ -1894,6 +1913,7 @@
             await batch.commit();
           }
           lastSyncedJournalJSON = currentJSON;
+          _origRemoveItem.call(window.localStorage, JOURNAL_PENDING_PUSH_FLAG);
         }catch(err){
           console.error('فشل رفع تحديثات اليومية لفايربيز:', err);
         }
@@ -1961,6 +1981,7 @@
 
     Storage.prototype.setItem = function(key, value){
       if(this === window.localStorage && key === JOURNAL_SYNC_KEY){
+        _origSetItem.call(window.localStorage, JOURNAL_PENDING_PUSH_FLAG, '1');
         const ok = safeLocalSet(key, value);
         if(ok) pushJournalDiffToCloud();
         return;
@@ -1974,6 +1995,7 @@
         return;
       }
       if(this === window.localStorage && key.indexOf(CLOUD_KEY_PREFIX) === 0){
+        _origSetItem.call(window.localStorage, PENDING_PUSH_FLAG, '1');
         const ok = safeLocalSet(key, value);
         if(ok) pushToCloud();
         return;
@@ -1983,10 +2005,12 @@
     Storage.prototype.removeItem = function(key){
       _origRemoveItem.call(this, key);
       if(this === window.localStorage && key === JOURNAL_SYNC_KEY){
+        _origSetItem.call(window.localStorage, JOURNAL_PENDING_PUSH_FLAG, '1');
         pushJournalDiffToCloud();
         return;
       }
       if(this === window.localStorage && key.indexOf(CLOUD_KEY_PREFIX) === 0){
+        _origSetItem.call(window.localStorage, PENDING_PUSH_FLAG, '1');
         pushToCloud();
       }
     };
@@ -2036,40 +2060,65 @@
 
     async function initCloudSync(){
       try{
-        const snap = await CLOUD_DOC_REF.get();
-        if(snap.exists){
-          // فيه بيانات محفوظة على السحابة بالفعل: هى المصدر الرسمى، ننزلها محليًا
-          const cloudData = snap.data().data || {};
-          applyCloudDataToLocalStorage(cloudData);
-          lastSyncedDataJSON = JSON.stringify(cloudData);
-          suppressNextSnapshot = true;
-        } else {
-          // أول مرة: مفيش حاجة على السحابة، نرفع أى بيانات محلية موجودة كنقطة بداية
-          const initialData = collectLocalKhaznaData();
+        // لو فيه علامة "تعديل محلى معلّق" من قبل الريفرش، معناه إن آخر تعديل
+        // محلى (زى إضافة حركة على خزنة النيل مثلاً) ممكن يكون لسه معملوش
+        // رفع فعلى للسحابة وقت ما حصل الريفرش. فى الحالة دى المحلى هو الأحدث
+        // فعلاً، فبنرفعه الأول بدل ما ننزل نسخة السحابة القديمة فوقه ونمسحه.
+        const hadPendingLocalPush = localStorage.getItem(PENDING_PUSH_FLAG) === '1';
+        if(hadPendingLocalPush){
+          const localData = collectLocalKhaznaData();
           await CLOUD_DOC_REF.set({
-            data: initialData,
+            data: localData,
             writer: SESSION_ID,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
           });
-          lastSyncedDataJSON = JSON.stringify(initialData);
+          lastSyncedDataJSON = JSON.stringify(localData);
           suppressNextSnapshot = true;
+          _origRemoveItem.call(window.localStorage, PENDING_PUSH_FLAG);
+        } else {
+          const snap = await CLOUD_DOC_REF.get();
+          if(snap.exists){
+            // فيه بيانات محفوظة على السحابة بالفعل: هى المصدر الرسمى، ننزلها محليًا
+            const cloudData = snap.data().data || {};
+            applyCloudDataToLocalStorage(cloudData);
+            lastSyncedDataJSON = JSON.stringify(cloudData);
+            suppressNextSnapshot = true;
+          } else {
+            // أول مرة: مفيش حاجة على السحابة، نرفع أى بيانات محلية موجودة كنقطة بداية
+            const initialData = collectLocalKhaznaData();
+            await CLOUD_DOC_REF.set({
+              data: initialData,
+              writer: SESSION_ID,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            lastSyncedDataJSON = JSON.stringify(initialData);
+            suppressNextSnapshot = true;
+          }
         }
         startCloudListener();
 
-        // مزامنة اليومية (مجموعة منفصلة، مستند لكل حركة)
-        const cloudJournal = await fetchFullJournalFromCloud();
-        if(cloudJournal.length > 0){
-          // فيه يومية على السحابة بالفعل: هى المصدر الرسمى
-          const json = JSON.stringify(cloudJournal);
-          safeLocalSet(JOURNAL_SYNC_KEY, json);
-          lastSyncedJournalJSON = json;
-        } else {
-          // مفيش حاجة على السحابة لسه: لو فيه يومية محلية قديمة (من قبل تفعيل
-          // المزامنة دى)، نرفعها كنقطة بداية بدل ما تضيع
+        // مزامنة اليومية (مجموعة منفصلة، مستند لكل حركة) — نفس فكرة العلامة المعلّقة
+        const hadPendingJournalPush = localStorage.getItem(JOURNAL_PENDING_PUSH_FLAG) === '1';
+        if(hadPendingJournalPush){
+          lastSyncedJournalJSON = JSON.stringify([]); // نخليها فاضية عشان أى حركة محلية تتعتبر "جديدة" وتتزامن
+          _origRemoveItem.call(window.localStorage, JOURNAL_PENDING_PUSH_FLAG);
           const localJournal = getLocalJournalArray();
-          lastSyncedJournalJSON = JSON.stringify([]); // نخليها فاضية الأول عشان pushJournalDiffToCloud يعتبر كل حاجة "جديدة" ويرفعها
           if(localJournal.length > 0) pushJournalDiffToCloud();
-          else lastSyncedJournalJSON = JSON.stringify(localJournal);
+        } else {
+          const cloudJournal = await fetchFullJournalFromCloud();
+          if(cloudJournal.length > 0){
+            // فيه يومية على السحابة بالفعل: هى المصدر الرسمى
+            const json = JSON.stringify(cloudJournal);
+            safeLocalSet(JOURNAL_SYNC_KEY, json);
+            lastSyncedJournalJSON = json;
+          } else {
+            // مفيش حاجة على السحابة لسه: لو فيه يومية محلية قديمة (من قبل تفعيل
+            // المزامنة دى)، نرفعها كنقطة بداية بدل ما تضيع
+            const localJournal = getLocalJournalArray();
+            lastSyncedJournalJSON = JSON.stringify([]); // نخليها فاضية الأول عشان pushJournalDiffToCloud يعتبر كل حاجة "جديدة" ويرفعها
+            if(localJournal.length > 0) pushJournalDiffToCloud();
+            else lastSyncedJournalJSON = JSON.stringify(localJournal);
+          }
         }
         startJournalCloudListener();
       }catch(err){
@@ -2084,6 +2133,28 @@
     cloudAuth.signInAnonymously().catch(err => {
       console.error('فشل تسجيل الدخول لفايربيز:', err);
       resolveCloudReadyOnce();
+    });
+
+    // شبكة أمان إضافية: لو المستخدم عمل ريفرش أو قفل التاب وفيه رفع
+    // معلّق فى انتظار الـ debounce، نلغى الانتظار ونحاول نرفع فورًا. مش
+    // مضمون ١٠٠٪ إن الطلب يخلص قبل ما الصفحة تقفل، لكنه بيقلل فرصة الضياع،
+    // وعلامة "التعديل المعلّق" فى localStorage هى الضمانة الحقيقية بعد الريفرش.
+    window.addEventListener('beforeunload', () => {
+      if(cloudPushTimer){
+        clearTimeout(cloudPushTimer);
+        if(cloudAuth.currentUser){
+          const currentData = collectLocalKhaznaData();
+          CLOUD_DOC_REF.set({
+            data: currentData,
+            writer: SESSION_ID,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }).catch(() => {});
+        }
+      }
+      if(journalPushTimer){
+        clearTimeout(journalPushTimer);
+        pushJournalDiffToCloud();
+      }
     });
   }catch(err){
     console.error('فشل تحميل فايربيز، هيشتغل النظام محليًا بدون مزامنة:', err);
