@@ -1795,7 +1795,11 @@
 
     function collectLocalKhaznaData(){
       const data = {};
-      Object.keys(localStorage)
+      const keys = new Set(Object.keys(localStorage));
+      // مفاتيح جديدة فشل حفظها فعليًا على الديسك (مساحة ممتلئة) بس موجودة
+      // فى الغطاء المؤقت لازم تتحسب برضه، وإلا مش هتترفع للسحابة خالص
+      Object.keys(memoryOverlay).forEach(k => keys.add(k));
+      Array.from(keys)
         .filter(k => k.indexOf(CLOUD_KEY_PREFIX) === 0 && k.indexOf(ARCHIVE_KEY_PREFIX) !== 0 && k !== JOURNAL_SYNC_KEY)
         .forEach(k => { data[k] = localStorage.getItem(k); });
       return data;
@@ -1961,19 +1965,51 @@
     // اعتراض الكتابة والمسح على localStorage عشان نرفع أى تغيير للسحابة تلقائيًا
     const _origSetItem = Storage.prototype.setItem;
     const _origRemoveItem = Storage.prototype.removeItem;
+    const _origGetItem = Storage.prototype.getItem;
     let quotaWarningShown = false;
+    let spaceLowWarningShown = false;
 
-    // كتابة آمنة: لو مساحة تخزين المتصفح امتلأت، منوقفش تنفيذ باقى الكود
-    // ونبلّغ المستخدم مرة واحدة بس بدل ما نخليه يحصل كل شوية
+    // "غطاء" فى الذاكرة: لو مساحة المتصفح امتلأت وفشلت الكتابة الفعلية،
+    // بنخزن القيمة هنا مؤقتًا بدل ما نضيعها، وبنخلى القراءة (getItem) ترجعها
+    // بدل القيمة القديمة. كده الشاشة والرفع للسحابة بيشتغلوا بالقيمة الصح
+    // حتى لو المتصفح مش قادر يخزنها فعليًا على الديسك.
+    const memoryOverlay = Object.create(null);
+
+    Storage.prototype.getItem = function(key){
+      if(this === window.localStorage && Object.prototype.hasOwnProperty.call(memoryOverlay, key)){
+        return memoryOverlay[key];
+      }
+      return _origGetItem.call(this, key);
+    };
+
+    // فحص استباقى لمساحة التخزين: بننبّه لما المساحة تقرب تخلص، قبل ما تحصل
+    // أى مشكلة فعلية فى الحفظ (بدل ما نستنى الخطأ يحصل الأول)
+    function checkStorageSpaceProactively(){
+      if(spaceLowWarningShown) return;
+      if(!(navigator.storage && navigator.storage.estimate)) return;
+      navigator.storage.estimate().then(({usage, quota}) => {
+        if(quota && usage / quota > 0.85){
+          spaceLowWarningShown = true;
+          alert('تنبيه: مساحة تخزين المتصفح المتاحة لموقع الخزنة قربت تخلص (' + Math.round(usage/quota*100) + '%). البيانات لسه بتترفع للسحابة بأمان، لكن يفضّل تفريغ مساحة على الجهاز ده أو تكلم مطور النظام قريب.');
+        }
+      }).catch(() => {});
+    }
+    checkStorageSpaceProactively();
+
+    // كتابة آمنة: لو مساحة تخزين المتصفح امتلأت، منوقفش تنفيذ باقى الكود.
+    // القيمة بتتحفظ فى الغطاء المؤقت (memoryOverlay) عشان تكمل طريقها للسحابة
+    // بدل ما تتمسح خالص، وبنبلّغ المستخدم مرة واحدة بس بدل ما يتكرر التنبيه.
     function safeLocalSet(key, value){
       try{
         _origSetItem.call(window.localStorage, key, value);
+        delete memoryOverlay[key];
         return true;
       }catch(e){
+        memoryOverlay[key] = value;
         if(!quotaWarningShown){
           quotaWarningShown = true;
           console.error('مساحة تخزين المتصفح (localStorage) ممتلئة:', e);
-          alert('تنبيه: مساحة تخزين المتصفح امتلأت، فبعض البيانات (زى قيود اليومية) مش هتتحفظ محليًا من دلوقتي. كلم مطور النظام لتقليل حجم البيانات القديمة المخزنة.');
+          alert('تنبيه: مساحة تخزين المتصفح امتلأت. البيانات هتفضل شغالة وهتترفع للسحابة عادى، لكن مش هتتحفظ نسخة منها على الجهاز ده لحد ما تفضى مساحة. كلم مطور النظام لتقليل حجم البيانات القديمة المخزنة محليًا.');
         }
         return false;
       }
@@ -1982,28 +2018,34 @@
     Storage.prototype.setItem = function(key, value){
       if(this === window.localStorage && key === JOURNAL_SYNC_KEY){
         _origSetItem.call(window.localStorage, JOURNAL_PENDING_PUSH_FLAG, '1');
-        const ok = safeLocalSet(key, value);
-        if(ok) pushJournalDiffToCloud();
+        safeLocalSet(key, value);
+        // بنرفع للسحابة حتى لو فشل الحفظ محليًا (مساحة ممتلئة) — القيمة
+        // اتحفظت فى الغطاء المؤقت فى الذاكرة، فمش هتضيع، هتوصل للسحابة عادى
+        pushJournalDiffToCloud();
+        checkStorageSpaceProactively();
         return;
       }
       if(this === window.localStorage && key.indexOf(ARCHIVE_KEY_PREFIX) === 0){
-        const ok = safeLocalSet(key, value);
-        if(ok){
-          const year = key.slice(ARCHIVE_KEY_PREFIX.length);
-          try{ pushArchiveYearToCloud(year, JSON.parse(value)); }catch(e){}
-        }
+        safeLocalSet(key, value);
+        const year = key.slice(ARCHIVE_KEY_PREFIX.length);
+        try{ pushArchiveYearToCloud(year, JSON.parse(value)); }catch(e){}
+        checkStorageSpaceProactively();
         return;
       }
       if(this === window.localStorage && key.indexOf(CLOUD_KEY_PREFIX) === 0){
         _origSetItem.call(window.localStorage, PENDING_PUSH_FLAG, '1');
-        const ok = safeLocalSet(key, value);
-        if(ok) pushToCloud();
+        safeLocalSet(key, value);
+        pushToCloud();
+        checkStorageSpaceProactively();
         return;
       }
       _origSetItem.call(this, key, value);
     };
     Storage.prototype.removeItem = function(key){
       _origRemoveItem.call(this, key);
+      if(this === window.localStorage){
+        delete memoryOverlay[key];
+      }
       if(this === window.localStorage && key === JOURNAL_SYNC_KEY){
         _origSetItem.call(window.localStorage, JOURNAL_PENDING_PUSH_FLAG, '1');
         pushJournalDiffToCloud();
@@ -5998,7 +6040,7 @@
 
   // بيانات ترويسة كل شركة على الإيصال — عدّل النصوص هنا لو حبيت تغيّر اسم الشركة الظاهر بالإيصال
   const RECEIPT_COMPANIES = {
-    first: { ar: 'فرست دي اس للمقاولات', en: 'FIRST DS CONTRACTING' },
+    first: { ar: 'فيرست دي اس للمقاولات', en: 'FIRST DS CONTRACTING' },
     nile:  { ar: 'شركة النيل للمقاولات', en: 'ELNIL CONTRACTING' }
   };
 
