@@ -766,6 +766,19 @@
   .denom-modal-actions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
   .denom-modal-actions button:disabled{ opacity:0.5; cursor:not-allowed; }
 
+  /* ---------- قائمة (نافذة) إضافة حركة جديدة ---------- */
+  .atm-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:14px 16px; margin-bottom:6px; }
+  .atm-grid .field.full{ grid-column: 1 / -1; }
+  .atm-grid .field label{
+    display:block; font-size:12.5px; font-weight:700; color: var(--ink-soft); margin-bottom:5px;
+  }
+  .atm-grid .field input, .atm-grid .field select{
+    width:100%; padding:9px 10px; border-radius:9px; border:1.5px solid var(--line);
+    font-family:'Cairo'; font-size:14px; background:#fff; color:var(--ink); box-sizing:border-box;
+  }
+  .atm-grid .field input:focus, .atm-grid .field select:focus{ outline:none; border-color: var(--teal); }
+  @media (max-width:600px){ .atm-grid{ grid-template-columns: 1fr; } }
+
   .report-col-grid{
     display:flex; flex-wrap:wrap; gap:8px;
   }
@@ -4066,6 +4079,106 @@
     openDenomOutModal(tr, payCompany, creditVal);
   }
 
+  // فتح قائمة (نافذة) إضافة حركة جديدة — بدل الكتابة المباشرة جوه الجدول.
+  // بتاخد نفس بنود الجدول، وبعد الترحيل بتضيف السطر تحت فى "حركة اليوم" بتاعة الشركة
+  function openAddTransactionModal(company){
+    const payOptions = payOptionsFor(company);
+    const payOptionsHtml = payOptions.map(m =>
+      `<option value="${m}" ${m === company.safe ? 'selected' : ''}>${m}</option>`
+    ).join('');
+
+    const overlay = document.createElement('div');
+    overlay.className = 'denom-modal-overlay';
+    overlay.innerHTML = `
+      <div class="denom-modal-card">
+        <div class="denom-modal-head">
+          <h3>➕ إضافة حركة جديدة — ${company.label}</h3>
+          <button type="button" class="dm-close" title="إغلاق">✕</button>
+        </div>
+        <div class="atm-grid">
+          <div class="field">
+            <label>التاريخ</label>
+            <input type="date" class="atm-date" value="${todayISO()}">
+          </div>
+          <div class="field">
+            <label>طريقة التسديد</label>
+            <select class="atm-pay">${payOptionsHtml}</select>
+          </div>
+          <div class="field full">
+            <label>البيان</label>
+            <input type="text" class="atm-desc" placeholder="بيان الحركة">
+          </div>
+          <div class="field">
+            <label>مركز التكلفة</label>
+            <input type="text" class="atm-costcenter" list="dl-costCenters" placeholder="مركز التكلفة">
+          </div>
+          <div class="field">
+            <label>المصروف يخص</label>
+            <input type="text" class="atm-expensefor" list="dl-expenseFors" placeholder="المصروف يخص">
+          </div>
+          <div class="field full">
+            <label>مستلم الصرف</label>
+            <input type="text" class="atm-recipient" list="dl-recipients" placeholder="مستلم الصرف">
+          </div>
+          <div class="field">
+            <label>مدين</label>
+            <input type="number" step="0.01" class="atm-debit" placeholder="0.00">
+          </div>
+          <div class="field">
+            <label>دائن</label>
+            <input type="number" step="0.01" class="atm-credit" placeholder="0.00">
+          </div>
+        </div>
+        <div class="denom-modal-actions">
+          <button type="button" class="post-btn atm-confirm">✅ ترحيل</button>
+          <button type="button" class="add-row atm-cancel" style="background:#8a8f8c;">إلغاء</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    function closeModal(){ overlay.remove(); }
+    overlay.querySelector('.dm-close').addEventListener('click', closeModal);
+    overlay.querySelector('.atm-cancel').addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => { if(e.target === overlay) closeModal(); });
+    overlay.querySelector('.atm-desc').focus();
+
+    overlay.querySelector('.atm-confirm').addEventListener('click', () => {
+      const date = overlay.querySelector('.atm-date').value || todayISO();
+      const desc = overlay.querySelector('.atm-desc').value.trim();
+      const pay = overlay.querySelector('.atm-pay').value;
+      const costCenter = overlay.querySelector('.atm-costcenter').value.trim();
+      const expenseFor = overlay.querySelector('.atm-expensefor').value.trim();
+      const recipient = overlay.querySelector('.atm-recipient').value.trim();
+      const debit = overlay.querySelector('.atm-debit').value;
+      const credit = overlay.querySelector('.atm-credit').value;
+
+      if(!desc && !debit && !credit){
+        alert('من فضلك اكتب بيان الحركة أو قيمة مدين/دائن على الأقل قبل الترحيل.');
+        return;
+      }
+
+      const rowData = {
+        date, desc, pay, costCenter, source:'', expenseFor, recipient,
+        debit: debit || '', credit: credit || '', receipt: null
+      };
+      const tr = makeRow(rowData, company);
+      ui[company.key].tbody.appendChild(tr);
+      onChange(company);
+
+      // نفس السلوك اللى بيحصل لو كُتبت القيم دى جوه الجدول مباشرة: إضافتها
+      // لدليل الحسابات لو جديدة، وفتح شاشة تحديد فئات المبلغ لو الحركة سحب من الخزنة
+      let dirChanged = false;
+      if(directoryAddItem('costCenters', costCenter, '')) dirChanged = true;
+      if(directoryAddItem('expenseFors', expenseFor, '')) dirChanged = true;
+      if(directoryAddItem('recipients', recipient, '')) dirChanged = true;
+      if(dirChanged) refreshDirectoryDatalists();
+      maybeOpenDenomModal(tr, company);
+
+      closeModal();
+      tr.scrollIntoView({ behavior:'smooth', block:'center' });
+    });
+  }
+
   // بناء وعرض شاشة تحديد فئات المبلغ الخارج من الخزنة
   function openDenomOutModal(tr, company, amount){
     const counts = loadCashCounts();
@@ -5470,10 +5583,7 @@
 
   COMPANIES.forEach(c => {
     document.getElementById('addRowBtn_' + c.key).addEventListener('click', () => {
-      const tr = makeRow(null, c);
-      ui[c.key].tbody.appendChild(tr);
-      tr.querySelector('.f-desc').focus();
-      onChange(c);
+      openAddTransactionModal(c);
     });
 
     ui[c.key].prevInput.addEventListener('input', () => {
