@@ -1579,7 +1579,6 @@
       </div>
       <div>
         <label style="display:block; font-size:12px; font-weight:700; color: var(--ink-soft); margin-bottom:8px;">الحسابات المطلوب التقرير عنها</label>
-        <div style="font-size:11px; color: var(--ink-soft); margin-bottom:8px;">لما تختار خزنة شركة (فيرست / النيل) بيتحدد لك تلقائيًا حساب خزنتها بس. لو عايز تضيف حساب بنك للتقرير كمان، حدده من القائمة تحت أو دوس "تحديد الكل".</div>
         <div class="report-check-toolbar">
           <button type="button" id="repAcctSelectAll">تحديد الكل</button>
           <button type="button" id="repAcctClearAll">إلغاء التحديد</button>
@@ -2479,34 +2478,6 @@
     localStorage.setItem(MANUAL_KEY, JSON.stringify(obj));
   }
 
-  // مجموع مدين/دائن الحساب من كل صفوف حركة اليوم الحالية (بتُستخدم كـ"نقطة أساس" وقت أى تعديل يدوى)
-  function getAccountSumsSnapshot(acct){
-    const snap = { debit: 0, credit: 0 };
-    getAllLedgerRowsRaw().forEach(r => {
-      if(r.pay === acct){
-        snap.debit += parseFloat(r.debit) || 0;
-        snap.credit += parseFloat(r.credit) || 0;
-      }
-    });
-    return snap;
-  }
-
-  // تسجيل رصيد حالى يدوى لحساب: بيتحفظ كـ"نقطة أساس" (القيمة + مجموع مدين/دائن وقت التعديل)
-  // مش كرقم جامد، عشان أى حركة (مدين/دائن) تتسجّل بعد كده على نفس الحساب تعدّل الرصيد تلقائيًا
-  // فوق أو تحت القيمة اليدوية دى، بدل ما تفضل مجمدة وماتتأثرش بحركات جديدة.
-  function setManualCurrent(acct, value){
-    const manual = loadManual();
-    const snap = getAccountSumsSnapshot(acct);
-    manual[acct] = { v: parseFloat(value) || 0, bd: snap.debit, bc: snap.credit };
-    saveManual(manual);
-  }
-
-  function clearManualCurrent(acct){
-    const manual = loadManual();
-    delete manual[acct];
-    saveManual(manual);
-  }
-
   // تصنيف الحساب: خزنة أو بنك، بناءً على اسمه
   function acctType(name){
     return name.includes('بنك') ? 'bank' : 'safe';
@@ -2553,11 +2524,13 @@
         inp.addEventListener('keydown', (e) => {
           if(e.key !== 'Enter') return;
           const acct = inp.dataset.acct;
+          const manual = loadManual();
           if(inp.value === ''){
-            clearManualCurrent(acct);
+            delete manual[acct];
           } else {
-            setManualCurrent(acct, inp.value);
+            manual[acct] = parseFloat(inp.value) || 0;
           }
+          saveManual(manual);
           recomputeAccounts();
           inp.blur();
         });
@@ -2567,10 +2540,8 @@
         const valueEl = container.querySelector(`.acct-current[data-acct-value="${CSS.escape(acct)}"]`);
         const inputEl = container.querySelector(`.acct-current-input[data-acct-input="${CSS.escape(acct)}"]`);
         const manual = loadManual();
-        const manualEntry = manual[acct];
-        const hasManualEntry = manualEntry !== undefined && manualEntry !== null && manualEntry !== '';
-        inputEl.value = hasManualEntry
-          ? (typeof manualEntry === 'object' ? manualEntry.v : manualEntry)
+        inputEl.value = (manual[acct] !== undefined && manual[acct] !== null && manual[acct] !== '')
+          ? manual[acct]
           : valueEl.textContent.replace(/,/g, '');
         valueEl.style.display = 'none';
         inputEl.style.display = 'block';
@@ -2587,11 +2558,13 @@
         const finish = () => {
           const acct = inp.dataset.acctInput;
           const valueEl = container.querySelector(`.acct-current[data-acct-value="${CSS.escape(acct)}"]`);
+          const manual = loadManual();
           if(inp.value === ''){
-            clearManualCurrent(acct);
+            delete manual[acct];
           } else {
-            setManualCurrent(acct, inp.value);
+            manual[acct] = parseFloat(inp.value) || 0;
           }
+          saveManual(manual);
           inp.style.display = 'none';
           valueEl.style.display = 'block';
           recomputeAccounts();
@@ -2645,22 +2618,8 @@
     const list = PAYMENT_METHODS.map(a => {
       const opening = parseFloat(openings[a]) || 0;
       const auto = opening + sums[a].debit - sums[a].credit;
-      const manualEntry = manual[a];
-      const hasManual = manualEntry !== undefined && manualEntry !== null && manualEntry !== '';
-      let current = auto;
-      if(hasManual){
-        if(typeof manualEntry === 'object'){
-          // القيمة اليدوية + أى حركات (مدين/دائن) اتسجّلت على الحساب بعد لحظة التعديل اليدوى بالظبط،
-          // فالرصيد بيتحرك تلقائيًا فوق أو تحت القيمة اليدوية مع كل عملية جديدة بدل ما يفضل مجمد
-          const baseValue = parseFloat(manualEntry.v) || 0;
-          const baseDebit = parseFloat(manualEntry.bd) || 0;
-          const baseCredit = parseFloat(manualEntry.bc) || 0;
-          current = baseValue + (sums[a].debit - baseDebit) - (sums[a].credit - baseCredit);
-        } else {
-          // توافق مع بيانات قديمة كانت متسجّلة كرقم ثابت بس (قبل التحديث) — هتتحول لنقطة أساس تلقائيًا مع أول تعديل جديد
-          current = parseFloat(manualEntry) || 0;
-        }
-      }
+      const hasManual = manual[a] !== undefined && manual[a] !== null && manual[a] !== '';
+      const current = hasManual ? (parseFloat(manual[a]) || 0) : auto;
       const type = acctType(a);
       if(a !== excludedFromTotal){
         if(type === 'bank') banksTotal += current; else safesTotal += current;
@@ -4022,12 +3981,14 @@
     const company = companyByKey(companyKey);
     if(!company) return;
     const acct = company.safe;
+    const manual = loadManual();
     const hasAnyCount = denomCounts && Object.values(denomCounts).some(v => (parseInt(v) || 0) > 0);
     if(hasAnyCount){
-      setManualCurrent(acct, total);
+      manual[acct] = total;
     } else {
-      clearManualCurrent(acct);
+      delete manual[acct];
     }
+    saveManual(manual);
     if(typeof recomputeAccounts === 'function') recomputeAccounts();
   }
 
@@ -4522,22 +4483,13 @@
     try{
       const companyVal = document.getElementById('repCompany').value;
       const accounts = reportAccountsForCompanySel(companyVal);
-      // لما تختار خزنة شركة بعينها (فيرست / النيل)، الافتراضى إن الخانة المحددة تلقائيًا
-      // تبقى خزنة الشركة دى بس — عشان التقرير يوريك كل معاملات الخزنة دى فعلًا من غير
-      // ما يتجمع معاها حسابات تانية (زى البنوك المشتركة) إلا لو انت اخترتها بنفسك من القائمة تحت.
-      const defaultOnlyAcct = (companyVal === 'first' || companyVal === 'nile')
-        ? companyByKey(companyVal).safe
-        : null;
       const grid = document.getElementById('repAccountsGrid');
-      grid.innerHTML = accounts.map(a => {
-        const isChecked = defaultOnlyAcct ? (a === defaultOnlyAcct) : true;
-        return `
-        <label class="report-check-item ${isChecked ? 'checked' : ''}">
-          <input type="checkbox" class="rep-acct-chk" value="${escapeHtml(a)}" ${isChecked ? 'checked' : ''}>
+      grid.innerHTML = accounts.map(a => `
+        <label class="report-check-item checked">
+          <input type="checkbox" class="rep-acct-chk" value="${escapeHtml(a)}" checked>
           ${escapeHtml(a)}
         </label>
-      `;
-      }).join('');
+      `).join('');
       grid.querySelectorAll('.rep-acct-chk').forEach(chk => {
         chk.addEventListener('change', () => {
           chk.closest('.report-check-item').classList.toggle('checked', chk.checked);
