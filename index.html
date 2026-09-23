@@ -1579,6 +1579,7 @@
       </div>
       <div>
         <label style="display:block; font-size:12px; font-weight:700; color: var(--ink-soft); margin-bottom:8px;">الحسابات المطلوب التقرير عنها</label>
+        <div style="font-size:11px; color: var(--ink-soft); margin-bottom:8px;">لما تختار خزنة شركة (فيرست / النيل) بيتحدد لك تلقائيًا حساب خزنتها بس. لو عايز تضيف حساب بنك للتقرير كمان، حدده من القائمة تحت أو دوس "تحديد الكل".</div>
         <div class="report-check-toolbar">
           <button type="button" id="repAcctSelectAll">تحديد الكل</button>
           <button type="button" id="repAcctClearAll">إلغاء التحديد</button>
@@ -4521,13 +4522,22 @@
     try{
       const companyVal = document.getElementById('repCompany').value;
       const accounts = reportAccountsForCompanySel(companyVal);
+      // لما تختار خزنة شركة بعينها (فيرست / النيل)، الافتراضى إن الخانة المحددة تلقائيًا
+      // تبقى خزنة الشركة دى بس — عشان التقرير يوريك كل معاملات الخزنة دى فعلًا من غير
+      // ما يتجمع معاها حسابات تانية (زى البنوك المشتركة) إلا لو انت اخترتها بنفسك من القائمة تحت.
+      const defaultOnlyAcct = (companyVal === 'first' || companyVal === 'nile')
+        ? companyByKey(companyVal).safe
+        : null;
       const grid = document.getElementById('repAccountsGrid');
-      grid.innerHTML = accounts.map(a => `
-        <label class="report-check-item checked">
-          <input type="checkbox" class="rep-acct-chk" value="${escapeHtml(a)}" checked>
+      grid.innerHTML = accounts.map(a => {
+        const isChecked = defaultOnlyAcct ? (a === defaultOnlyAcct) : true;
+        return `
+        <label class="report-check-item ${isChecked ? 'checked' : ''}">
+          <input type="checkbox" class="rep-acct-chk" value="${escapeHtml(a)}" ${isChecked ? 'checked' : ''}>
           ${escapeHtml(a)}
         </label>
-      `).join('');
+      `;
+      }).join('');
       grid.querySelectorAll('.rep-acct-chk').forEach(chk => {
         chk.addEventListener('change', () => {
           chk.closest('.report-check-item').classList.toggle('checked', chk.checked);
