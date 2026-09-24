@@ -1322,6 +1322,7 @@
             <button class="add-row" id="journalRestoreBtn_first" style="background:#3E6FBF;color:#fff;">📂 استرجاع نسخة (ملف النظام)</button>
             <input type="file" id="journalRestoreFile_first" accept=".json" style="display:none;">
             <button class="add-row" id="deleteSelectedBtn_first" style="background:var(--rose);color:#fff;">🗑️ حذف المحدد</button>
+            <button class="add-row" id="dedupJournalBtn_first" style="background:#7A3E9D;color:#fff;">🧹 حذف الحركات المكررة</button>
             <button class="danger-btn" id="clearJournalBtn_first">🗑️ مسح يومية فيرست بالكامل</button>
           </div>
         </div>
@@ -1418,6 +1419,9 @@
             <button class="add-row" id="journalRestoreBtn_nile" style="background:#3E6FBF;color:#fff;">📂 استرجاع نسخة (ملف النظام)</button>
             <input type="file" id="journalRestoreFile_nile" accept=".json" style="display:none;">
             <button class="add-row" id="deleteSelectedBtn_nile" style="background:var(--rose);color:#fff;">🗑️ حذف المحدد</button>
+            \1
+            <button class="add-row" id="cloudCheckBtn" style="background:#2F5D8A;color:#fff;">☁️ فحص مزامنة السحابة</button>
+            <button class="add-row" id="repairNileBtn" style="background:#B8862E;color:#fff;">🩹 إكمال الحركات الناقصة (مطابقة تقرير المصروفات)</button>
             <button class="danger-btn" id="clearJournalBtn_nile">🗑️ مسح يومية النيل بالكامل</button>
           </div>
         </div>
@@ -1579,6 +1583,7 @@
       </div>
       <div>
         <label style="display:block; font-size:12px; font-weight:700; color: var(--ink-soft); margin-bottom:8px;">الحسابات المطلوب التقرير عنها</label>
+        <div style="font-size:11px; color: var(--ink-soft); margin-bottom:8px;">لما تختار خزنة شركة (فيرست / النيل) بيتحدد لك تلقائيًا حساب خزنتها بس. لو عايز تضيف حساب بنك للتقرير كمان، حدده من القائمة تحت أو دوس "تحديد الكل".</div>
         <div class="report-check-toolbar">
           <button type="button" id="repAcctSelectAll">تحديد الكل</button>
           <button type="button" id="repAcctClearAll">إلغاء التحديد</button>
@@ -1974,6 +1979,31 @@
         journalRefreshWhenIdle();
       }, err => console.error('فشل الاستماع لتحديثات اليومية من فايربيز:', err));
     }
+
+    // فحص مطابقة اليومية المحلية مع السحابة (بالـ id) + رفع الناقص للسحابة عند الطلب
+    window.__khaznaCloudCheck = async function(){
+      if(!cloudAuth.currentUser) return { error: 'مفيش اتصال بفايربيز دلوقتى (لسه بيسجل الدخول أو النت واقف).' };
+      const snap = await JOURNAL_COLLECTION_REF.get({ source: 'server' });
+      const cloud = snap.docs.map(d => d.data());
+      const local = getLocalJournalArray();
+      const cIds = new Map(cloud.map(r => [r.id, r]));
+      const lIds = new Map(local.map(r => [r.id, r]));
+      const nileSum = arr => arr.filter(r => r.company === 'النيل').reduce((t, r) => t + (parseFloat(r.credit) || 0), 0);
+      return {
+        cloudCount: cloud.length, localCount: local.length,
+        missingInCloud: local.filter(r => !cIds.has(r.id)),
+        missingInLocal: cloud.filter(r => !lIds.has(r.id)),
+        cloudNileCredit: nileSum(cloud), localNileCredit: nileSum(local)
+      };
+    };
+    window.__khaznaPushMissingToCloud = async function(rows){
+      for(let i = 0; i < rows.length; i += 400){
+        const batch = cloudDb.batch();
+        rows.slice(i, i + 400).forEach(r => batch.set(JOURNAL_COLLECTION_REF.doc(String(r.id)), r));
+        await batch.commit();
+      }
+      lastSyncedJournalJSON = JSON.stringify(getLocalJournalArray());
+    };
 
     // اعتراض الكتابة والمسح على localStorage عشان نرفع أى تغيير للسحابة تلقائيًا
     const _origSetItem = Storage.prototype.setItem;
@@ -2478,6 +2508,34 @@
     localStorage.setItem(MANUAL_KEY, JSON.stringify(obj));
   }
 
+  // مجموع مدين/دائن الحساب من كل صفوف حركة اليوم الحالية (بتُستخدم كـ"نقطة أساس" وقت أى تعديل يدوى)
+  function getAccountSumsSnapshot(acct){
+    const snap = { debit: 0, credit: 0 };
+    getAllLedgerRowsRaw().forEach(r => {
+      if(r.pay === acct){
+        snap.debit += parseFloat(r.debit) || 0;
+        snap.credit += parseFloat(r.credit) || 0;
+      }
+    });
+    return snap;
+  }
+
+  // تسجيل رصيد حالى يدوى لحساب: بيتحفظ كـ"نقطة أساس" (القيمة + مجموع مدين/دائن وقت التعديل)
+  // مش كرقم جامد، عشان أى حركة (مدين/دائن) تتسجّل بعد كده على نفس الحساب تعدّل الرصيد تلقائيًا
+  // فوق أو تحت القيمة اليدوية دى، بدل ما تفضل مجمدة وماتتأثرش بحركات جديدة.
+  function setManualCurrent(acct, value){
+    const manual = loadManual();
+    const snap = getAccountSumsSnapshot(acct);
+    manual[acct] = { v: parseFloat(value) || 0, bd: snap.debit, bc: snap.credit };
+    saveManual(manual);
+  }
+
+  function clearManualCurrent(acct){
+    const manual = loadManual();
+    delete manual[acct];
+    saveManual(manual);
+  }
+
   // تصنيف الحساب: خزنة أو بنك، بناءً على اسمه
   function acctType(name){
     return name.includes('بنك') ? 'bank' : 'safe';
@@ -2524,13 +2582,11 @@
         inp.addEventListener('keydown', (e) => {
           if(e.key !== 'Enter') return;
           const acct = inp.dataset.acct;
-          const manual = loadManual();
           if(inp.value === ''){
-            delete manual[acct];
+            clearManualCurrent(acct);
           } else {
-            manual[acct] = parseFloat(inp.value) || 0;
+            setManualCurrent(acct, inp.value);
           }
-          saveManual(manual);
           recomputeAccounts();
           inp.blur();
         });
@@ -2540,8 +2596,10 @@
         const valueEl = container.querySelector(`.acct-current[data-acct-value="${CSS.escape(acct)}"]`);
         const inputEl = container.querySelector(`.acct-current-input[data-acct-input="${CSS.escape(acct)}"]`);
         const manual = loadManual();
-        inputEl.value = (manual[acct] !== undefined && manual[acct] !== null && manual[acct] !== '')
-          ? manual[acct]
+        const manualEntry = manual[acct];
+        const hasManualEntry = manualEntry !== undefined && manualEntry !== null && manualEntry !== '';
+        inputEl.value = hasManualEntry
+          ? (typeof manualEntry === 'object' ? manualEntry.v : manualEntry)
           : valueEl.textContent.replace(/,/g, '');
         valueEl.style.display = 'none';
         inputEl.style.display = 'block';
@@ -2558,13 +2616,11 @@
         const finish = () => {
           const acct = inp.dataset.acctInput;
           const valueEl = container.querySelector(`.acct-current[data-acct-value="${CSS.escape(acct)}"]`);
-          const manual = loadManual();
           if(inp.value === ''){
-            delete manual[acct];
+            clearManualCurrent(acct);
           } else {
-            manual[acct] = parseFloat(inp.value) || 0;
+            setManualCurrent(acct, inp.value);
           }
-          saveManual(manual);
           inp.style.display = 'none';
           valueEl.style.display = 'block';
           recomputeAccounts();
@@ -2618,8 +2674,22 @@
     const list = PAYMENT_METHODS.map(a => {
       const opening = parseFloat(openings[a]) || 0;
       const auto = opening + sums[a].debit - sums[a].credit;
-      const hasManual = manual[a] !== undefined && manual[a] !== null && manual[a] !== '';
-      const current = hasManual ? (parseFloat(manual[a]) || 0) : auto;
+      const manualEntry = manual[a];
+      const hasManual = manualEntry !== undefined && manualEntry !== null && manualEntry !== '';
+      let current = auto;
+      if(hasManual){
+        if(typeof manualEntry === 'object'){
+          // القيمة اليدوية + أى حركات (مدين/دائن) اتسجّلت على الحساب بعد لحظة التعديل اليدوى بالظبط،
+          // فالرصيد بيتحرك تلقائيًا فوق أو تحت القيمة اليدوية مع كل عملية جديدة بدل ما يفضل مجمد
+          const baseValue = parseFloat(manualEntry.v) || 0;
+          const baseDebit = parseFloat(manualEntry.bd) || 0;
+          const baseCredit = parseFloat(manualEntry.bc) || 0;
+          current = baseValue + (sums[a].debit - baseDebit) - (sums[a].credit - baseCredit);
+        } else {
+          // توافق مع بيانات قديمة كانت متسجّلة كرقم ثابت بس (قبل التحديث) — هتتحول لنقطة أساس تلقائيًا مع أول تعديل جديد
+          current = parseFloat(manualEntry) || 0;
+        }
+      }
       const type = acctType(a);
       if(a !== excludedFromTotal){
         if(type === 'bank') banksTotal += current; else safesTotal += current;
@@ -3981,14 +4051,12 @@
     const company = companyByKey(companyKey);
     if(!company) return;
     const acct = company.safe;
-    const manual = loadManual();
     const hasAnyCount = denomCounts && Object.values(denomCounts).some(v => (parseInt(v) || 0) > 0);
     if(hasAnyCount){
-      manual[acct] = total;
+      setManualCurrent(acct, total);
     } else {
-      delete manual[acct];
+      clearManualCurrent(acct);
     }
-    saveManual(manual);
     if(typeof recomputeAccounts === 'function') recomputeAccounts();
   }
 
@@ -4483,13 +4551,22 @@
     try{
       const companyVal = document.getElementById('repCompany').value;
       const accounts = reportAccountsForCompanySel(companyVal);
+      // لما تختار خزنة شركة بعينها (فيرست / النيل)، الافتراضى إن الخانة المحددة تلقائيًا
+      // تبقى خزنة الشركة دى بس — عشان التقرير يوريك كل معاملات الخزنة دى فعلًا من غير
+      // ما يتجمع معاها حسابات تانية (زى البنوك المشتركة) إلا لو انت اخترتها بنفسك من القائمة تحت.
+      const defaultOnlyAcct = (companyVal === 'first' || companyVal === 'nile')
+        ? companyByKey(companyVal).safe
+        : null;
       const grid = document.getElementById('repAccountsGrid');
-      grid.innerHTML = accounts.map(a => `
-        <label class="report-check-item checked">
-          <input type="checkbox" class="rep-acct-chk" value="${escapeHtml(a)}" checked>
+      grid.innerHTML = accounts.map(a => {
+        const isChecked = defaultOnlyAcct ? (a === defaultOnlyAcct) : true;
+        return `
+        <label class="report-check-item ${isChecked ? 'checked' : ''}">
+          <input type="checkbox" class="rep-acct-chk" value="${escapeHtml(a)}" ${isChecked ? 'checked' : ''}>
           ${escapeHtml(a)}
         </label>
-      `).join('');
+      `;
+      }).join('');
       grid.querySelectorAll('.rep-acct-chk').forEach(chk => {
         chk.addEventListener('change', () => {
           chk.closest('.report-check-item').classList.toggle('checked', chk.checked);
@@ -4554,8 +4631,9 @@
 
   // كشف حساب لحساب واحد: رصيد أول المدة (كل الحركات قبل "من تاريخ")
   // + حركات الفترة المطابقة للفلاتر مع رصيد تراكمي لكل حركة
-  function computeAccountReport(account, filters){
-    let all = loadJournal().filter(r => r.pay === account && (!filters.companyLabel || r.company === filters.companyLabel));
+  function computeAccountReport(account, filters, rowPred){
+    const pred = rowPred || (r => r.pay === account && (!filters.companyLabel || r.company === filters.companyLabel));
+    let all = loadJournal().filter(pred);
     all.sort((a,b) => (a.date||'').localeCompare(b.date||'') || (a.postedAt||'').localeCompare(b.postedAt||''));
 
     let opening = 0;
@@ -4593,6 +4671,14 @@
     let accounts = getSelectedReportAccounts();
     if(filters.pay) accounts = accounts.filter(a => a === filters.pay);
     const perAccount = accounts.map(a => computeAccountReport(a, filters));
+    // FIX: أى حركة فى يومية الشركة بحساب (pay) مش من حسابات الشركة المعتمدة كانت بتختفى من التقرير بصمت
+    // (وده كان بيخلّى إجمالى التقرير أقل من مصروفات الشركة الفعلية). دلوقتى بتظهر فى قسم مستقل ومنبَّه عليها.
+    if(!filters.pay){
+      const known = new Set(filters.companyVal === 'all' ? PAYMENT_METHODS : payOptionsFor(companyByKey(filters.companyVal)));
+      const orphan = computeAccountReport('⚠️ حركات بحساب غير معتمد', filters,
+        r => !known.has(r.pay) && (!filters.companyLabel || r.company === filters.companyLabel));
+      if(orphan.rows.length){ orphan.orphan = true; perAccount.push(orphan); }
+    }
     return { filters, perAccount };
   }
 
@@ -4659,7 +4745,11 @@
       <div class="card net"><div class="label"><span class="dot net"></span>صافى الأرصدة</div><div class="value">${fmt(grandClosing)}</div></div>
     `;
 
-    previewEl.innerHTML = perAccount.map(a => {
+    const orphanAcct = perAccount.find(a => a.orphan);
+    const orphanBanner = orphanAcct ? `<div style="background:var(--gold-bg);border:1px solid var(--gold);color:#6b4b10;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-weight:700;">
+      ⚠️ فى ${orphanAcct.rows.length} حركة (دائن ${fmt(orphanAcct.totalCredit)} / مدين ${fmt(orphanAcct.totalDebit)}) مسجّلة بحساب دفع مش من حسابات الشركة (خزنة/بنك) — اتضافت للتقرير تحت فى قسم مستقل عشان ما تختفيش. عدّل "طريقة التسديد" بتاعتها من اليومية.
+    </div>` : '';
+    previewEl.innerHTML = orphanBanner + perAccount.map(a => {
       const rowsHtml = a.rows.length ? a.rows.map(r => `
         <tr>${cols.map(c => `<td class="${reportColumnCellClass(c)}">${reportColumnCell(r, c)}</td>`).join('')}</tr>
       `).join('') : `<tr><td colspan="${cols.length}" style="text-align:center; color:var(--ink-soft); padding:20px;">لا توجد حركات مطابقة للفلاتر المحددة</td></tr>`;
@@ -5223,6 +5313,187 @@
       journalEditingId = null;
       renderCompanyJournal(c);
     });
+
+    document.getElementById('dedupJournalBtn_' + c.key).addEventListener('click', () => {
+      removeDuplicateJournalEntries(c);
+    });
+  });
+
+  /* ---------- كشف وحذف الحركات المكرّرة فى اليومية ----------
+     حركتين بيتعتبروا "مكررين" لو اتفقوا فى: التاريخ + البيان + طريقة التسديد +
+     مركز التكلفة + المصروف يخص + مستلم الصرف + مدين + دائن (لنفس الشركة).
+     بيتم الإبقاء على أقدم حركة فى كل مجموعة (أقل postedAt) وحذف الباقى. */
+  function duplicateKeyForJournalRow(r){
+    return [
+      r.date || '',
+      (r.desc || '').trim(),
+      r.pay || '',
+      (r.costCenter || '').trim(),
+      (r.expenseFor || '').trim(),
+      (r.recipient || '').trim(),
+      parseFloat(r.debit) || 0,
+      parseFloat(r.credit) || 0
+    ].join('|');
+  }
+
+  function findDuplicateJournalGroups(companyLabel){
+    const all = loadJournal();
+    const groups = new Map();
+    all.forEach(r => {
+      if((r.company || '') !== companyLabel) return;
+      const key = duplicateKeyForJournalRow(r);
+      if(!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(r);
+    });
+    // نرجّع بس المجموعات اللى فيها أكتر من حركة واحدة (فعلاً مكررة)
+    // FIX: بنعتبر المجموعة مكررة بس لو الحركات المتطابقة جاية من أكتر من ترحيل/استيراد (postedAt مختلف)،
+    // لأن تكرار نفس الحركة جوه ترحيل واحد (مصاريف تحويل 20 جنيه أكتر من مرة فى اليوم) حركات حقيقية مش تكرار.
+    return Array.from(groups.values()).filter(g => g.length > 1 && new Set(g.map(r => r.postedAt || '')).size > 1);
+  }
+
+  function removeDuplicateJournalEntries(company){
+    const dupGroups = findDuplicateJournalGroups(company.label);
+    if(dupGroups.length === 0){
+      alert(`✅ لا توجد حركات مكررة فى يومية ${company.label}.`);
+      return;
+    }
+
+    const idsToRemove = new Set();
+    let totalDuplicateExtras = 0;
+    const datesAffected = new Set();
+    dupGroups.forEach(group => {
+      // نرتب المجموعة بالأقدم أولاً (حسب postedAt، وبعدين id كضمان)
+      const sorted = [...group].sort((a, b) => (a.postedAt || '').localeCompare(b.postedAt || '') || (a.id || '').localeCompare(b.id || ''));
+      const firstBatch = sorted[0].postedAt || '';
+      sorted.filter(r => (r.postedAt || '') !== firstBatch).forEach(r => {
+        idsToRemove.add(r.id);
+        totalDuplicateExtras++;
+      });
+      datesAffected.add(group[0].date);
+    });
+
+    const datesList = Array.from(datesAffected).sort().join('، ');
+    const msg = `تم رصد ${dupGroups.length} مجموعة حركات مكررة فى يومية ${company.label} `
+      + `(إجمالى ${totalDuplicateExtras} حركة زيادة هيتم حذفها والإبقاء على أقدم نسخة من كل حركة).\n\n`
+      + `التواريخ المتأثرة: ${datesList}\n\n`
+      + `(الحركات المتشابهة اللى اتسجلت فى نفس الترحيل/الاستيراد بتتعتبر حركات حقيقية ومش هتتمس)\n\nهل تريد المتابعة وحذف الحركات الزيادة نهائيًا؟`;
+    if(!confirm(msg)) return;
+
+    let journal = loadJournal();
+    journal = journal.filter(r => !idsToRemove.has(r.id));
+    saveJournal(journal);
+    journalEditingId = null;
+    renderCompanyJournal(company);
+    renderAccountCards();
+    alert(`✅ تم حذف ${totalDuplicateExtras} حركة مكررة من يومية ${company.label}.`);
+  }
+
+  
+  /* ---------- إكمال الحركات الناقصة فى يومية النيل (مطابقة تقرير مصروفات النيل) ----------
+     الحركات دى موجودة فى تقرير مصروفات النيل (المرجع الصح) وناقصة من يومية النظام:
+     3 أيام كاملة (12 و21 و22 سبتمبر 2026) + حركات متطابقة اتحذفت بالغلط بسبب منطق "المكرر".
+     الأداة آمنة للتكرار: بتعدّ الموجود فى اليومية (بأى حساب دفع) لكل (تاريخ + مبلغ دائن) وبتضيف
+     بس الفرق الناقص، فلو ضغطت عليها مرتين أو الحركة موجودة أصلًا مش هتتكرر. */
+  const NILE_REPAIR_REF = [
+    ['2026-06-15','مصاريف تحويل',20,3],
+    ['2026-06-22','تسديد تخليص قيمة مضافة عقد مكمل بعد اتصال م.رامى',3000,2],
+    ['2026-07-01','اكراميه مشرف التاميات',1500,2],
+    ['2026-07-02','مصاريف تحويل نجاره',20,2],
+    ['2026-07-16','مصاريف تحويل',20,2],
+    ['2026-09-01','مصاريف تحويل',20,3],
+    ['2026-09-02','مصاريف تحويل',10,2],
+    ['2026-09-08','مصاريف تحويل',20,3],
+    ['2026-09-12','عهده عم عمر قها',50000,1],
+    ['2026-09-12','مصاريف تحويل',20,1],
+    ['2026-09-21','عهده عم عمر قها 150 الف تم ارسال عهده ع مبلغين 50 ثم 100',150000,1],
+    ['2026-09-21','مصاريف تحويل',100,1],
+    ['2026-09-21','مصاريف اصدار فيزا لبنك الاهلى ليا هتحمل تكلفتها ع مشروع قها',150,1],
+    ['2026-09-21','سيد عزت الموتيال - تم صرف مبلغ عن طريق تحويل 50 الف انستا + 50 الف نقدى - توقيع الايصال بقيمه مبلغ الاجماليه',100000,1],
+    ['2026-09-21','مصاريف تحويل',75,1],
+    ['2026-09-21','تحويل وتسديد فاتوره السباكه الجزار 96,280 قها',96280,1],
+    ['2026-09-21','حسن النجار قها',7000,1],
+    ['2026-09-21','حسن النجار بنها',18000,1],
+    ['2026-09-22','تحويل مبلغ تأمينات جارى 1 عقد مكمل نجع حمادى',52000,1],
+    ['2026-09-22','مصاريف تحويل',40,1],
+    ['2026-09-22','عهده عم عمر قها تم تحويل ع مبلغين',110000,1],
+    ['2026-09-22','مصاريف تحويل',60,1],
+    ['2026-09-22','تحويل مصاريف طباعه شهاده تأمين جارى 1 عقد مكمل نجع',2000,1],
+    ['2026-09-22','مصاريف تحويل',3,1]
+  ];
+
+  function repairNileMissingEntries(){
+    const company = companyByKey('nile');
+    const journal = loadJournal();
+    const have = new Map();
+    journal.forEach(r => {
+      if((r.company || '') !== company.label) return;
+      if(parseFloat(r.debit) || 0) return;
+      const k = (r.date || '') + '|' + (Math.round((parseFloat(r.credit) || 0) * 100) / 100);
+      have.set(k, (have.get(k) || 0) + 1);
+    });
+    // نجمّع المرجع بنفس المفتاح عشان نحسب العدد المتوقع لكل (تاريخ + مبلغ)
+    const expected = new Map();
+    NILE_REPAIR_REF.forEach(([d, desc, amt, n]) => {
+      const k = d + '|' + amt;
+      expected.set(k, (expected.get(k) || 0) + n);
+    });
+    const toAdd = [];
+    const remaining = new Map();
+    expected.forEach((n, k) => remaining.set(k, Math.max(0, n - (have.get(k) || 0))));
+    NILE_REPAIR_REF.forEach(([d, desc, amt, n]) => {
+      const k = d + '|' + amt;
+      for(let i = 0; i < n && (remaining.get(k) || 0) > 0; i++){
+        // رقم الخانة = العدد الموجود + ترتيب الإضافة، فنفس الحركة بياخد نفس الـ id على أى جهاز
+        const slot = (expected.get(k) || 0) - remaining.get(k) + 1;
+        toAdd.push({ date: d, desc, credit: amt, id: 'jr_fix_nile_' + d.replace(/-/g,'') + '_' + amt + '_' + slot });
+        remaining.set(k, remaining.get(k) - 1);
+      }
+    });
+    if(toAdd.length === 0){
+      alert('✅ مفيش حركات ناقصة: يومية النيل فيها كل الحركات اللى فى تقرير المصروفات.');
+      return;
+    }
+    const total = toAdd.reduce((s, r) => s + r.credit, 0);
+    const dates = Array.from(new Set(toAdd.map(r => r.date))).sort().join('، ');
+    if(!confirm(`هيتم إضافة ${toAdd.length} حركة ناقصة (إجمالى دائن ${fmt(total)}) لليومية.\n\nالتواريخ: ${dates}\n\nالحركات هتتسجل على "${company.safe}" — ولو حركة منهم كانت بنك، عدّل طريقة التسديد بتاعتها من اليومية.\n\nهل تريد المتابعة؟`)) return;
+
+    const postedAt = new Date().toISOString();
+    const existingIdSet = new Set(journal.map(x => x.id));
+    toAdd.forEach(r => {
+      if(existingIdSet.has(r.id)) return;
+      journal.push({
+        id: r.id,
+        date: r.date, desc: r.desc, pay: company.safe,
+        costCenter: '', source: '', expenseFor: '', recipient: '',
+        company: company.label, debit: 0, credit: r.credit, receipt: null, postedAt
+      });
+    });
+    saveJournal(journal);
+    try{ renderJournalPage(); }catch(e){}
+    try{ renderAccountCards(); }catch(e){}
+    try{ recomputeAccounts(); }catch(e){}
+    try{ renderReportsPage(); }catch(e){}
+    alert(`✅ تمت إضافة ${toAdd.length} حركة (دائن ${fmt(total)}). افتح تقرير الحسابات وراجع إجمالى دائن النيل = 10,947,670.`);
+  }
+  document.getElementById('repairNileBtn').addEventListener('click', repairNileMissingEntries);
+
+  document.getElementById('cloudCheckBtn').addEventListener('click', async () => {
+    if(typeof window.__khaznaCloudCheck !== 'function'){ alert('طبقة فايربيز مش شغالة دلوقتى (النظام شغال محليًا).'); return; }
+    try{
+      const r = await window.__khaznaCloudCheck();
+      if(r.error){ alert(r.error); return; }
+      let msg = `اليومية على السحابة: ${r.cloudCount} حركة — على الجهاز ده: ${r.localCount} حركة.\n`
+        + `إجمالى دائن النيل: سحابة ${fmt(r.cloudNileCredit)} / محلى ${fmt(r.localNileCredit)}\n`
+        + `(المتوقع بعد الإصلاح: 10,947,670)\n`;
+      if(r.missingInLocal.length) msg += `\n⚠️ ${r.missingInLocal.length} حركة على السحابة مش عندك محليًا — اعمل Refresh للصفحة (Ctrl+F5).`;
+      if(r.missingInCloud.length){
+        msg += `\n⚠️ ${r.missingInCloud.length} حركة عندك محليًا ومش على السحابة.\nتحب أرفعها للسحابة دلوقتى؟`;
+        if(confirm(msg)){ await window.__khaznaPushMissingToCloud(r.missingInCloud); alert('✅ اترفع ' + r.missingInCloud.length + ' حركة للسحابة.'); }
+        return;
+      }
+      if(!r.missingInLocal.length) msg += '\n✅ السحابة والجهاز متطابقين.';
+      alert(msg);
+    }catch(err){ console.error(err); alert('فشل فحص السحابة: ' + (err && err.message ? err.message : err)); }
   });
 
   /* ---------- حفظ / استرجاع نسخة من معاملات اليومية بصيغة النظام الأصلية (JSON) ----------
@@ -5850,7 +6121,17 @@
         const sums = {};
         PAYMENT_METHODS.forEach(a => sums[a] = { debit: 0, credit: 0 });
 
+        // مجموعة "بصمات" الحركات الموجودة بالفعل فى يومية الشركة دى، عشان منستوردش
+        // نفس الحركة مرتين لو الملف اتعمله استيراد قبل كده (أو لو فيه تكرار جوه الملف نفسه)
+        const existingCounts = new Map();
+        journal.filter(r => (r.company || '') === company.label).forEach(r => {
+          const k = duplicateKeyForJournalRow(r);
+          existingCounts.set(k, (existingCounts.get(k) || 0) + 1);
+        });
+        const seenInFile = new Map();
+
         let importedCount = 0;
+        let skippedDuplicateCount = 0;
         dataRows.forEach(rawRow => {
           const isEmptyRow = rawRow.every(cell => cell === '' || cell === null || cell === undefined);
           if(isEmptyRow) return;
@@ -5889,7 +6170,7 @@
           const expenseFor = String(get('expenseFor') || '');
           const recipient = String(get('recipient') || '');
 
-          journal.push({
+          const newRow = {
             id: 'jr_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
             date: dateVal,
             desc,
@@ -5903,7 +6184,20 @@
             credit,
             receipt: null,
             postedAt
-          });
+          };
+
+          const key = duplicateKeyForJournalRow(newRow);
+          // FIX: المقارنة بالعدد مش بالوجود. لو الحركة (نفس التاريخ+البيان+المبلغ) مكررة فى الملف نفسه
+          // بشكل حقيقى (زى مصاريف تحويل 20 جنيه تلات مرات فى نفس اليوم) بتتستورد كلها؛ وبتتجاهل بس
+          // اللى عددها الموجود فى اليومية بالفعل يغطيها (يعنى الاستيراد المتكرر لنفس الملف مش هيكرر حاجة).
+          const seenNo = (seenInFile.get(key) || 0) + 1;
+          seenInFile.set(key, seenNo);
+          if(seenNo <= (existingCounts.get(key) || 0)){
+            skippedDuplicateCount++;
+            return;
+          }
+
+          journal.push(newRow);
           importedCount++;
 
           if(sums[payVal]){
@@ -5918,7 +6212,11 @@
         });
 
         if(importedCount === 0){
-          alert('لم يتم العثور على أى حركة صالحة للاستيراد فى الملف.');
+          if(skippedDuplicateCount > 0){
+            alert(`لم يتم استيراد أى حركة: كل الحركات (${skippedDuplicateCount}) الموجودة فى الملف مكررة ومسجّلة بالفعل فى يومية ${company.label}.`);
+          } else {
+            alert('لم يتم العثور على أى حركة صالحة للاستيراد فى الملف.');
+          }
           return;
         }
 
@@ -5937,6 +6235,9 @@
         recomputeAccounts();
 
         let msg = `تم استيراد ${importedCount} حركة إلى يومية ${company.label} بنجاح (من شيت: ${sheetName}).`;
+        if(skippedDuplicateCount > 0){
+          msg += `\n\n⚠️ تم تجاهل ${skippedDuplicateCount} حركة لأنها مكررة (موجودة بالفعل فى اليومية).`;
+        }
         if(matchedLabels.length){
           msg += `\n\nالأعمدة المطابقة:\n- ${matchedLabels.join('\n- ')}`;
         }
