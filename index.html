@@ -1421,6 +1421,7 @@
             <button class="add-row" id="deleteSelectedBtn_nile" style="background:var(--rose);color:#fff;">🗑️ حذف المحدد</button>
             \1
             <button class="add-row" id="cloudCheckBtn" style="background:#2F5D8A;color:#fff;">☁️ فحص مزامنة السحابة</button>
+            <button class="add-row" id="diagNileBtn" style="background:#5B6B60;color:#fff;">🔍 تشخيص الحركات الناقصة</button>
             <button class="add-row" id="repairNileBtn" style="background:#B8862E;color:#fff;">🩹 إكمال الحركات الناقصة (مطابقة تقرير المصروفات)</button>
             <button class="danger-btn" id="clearJournalBtn_nile">🗑️ مسح يومية النيل بالكامل</button>
           </div>
@@ -5476,6 +5477,54 @@
     alert(`✅ تمت إضافة ${toAdd.length} حركة (دائن ${fmt(total)}). افتح تقرير الحسابات وراجع إجمالى دائن النيل = 10,947,670.`);
   }
   document.getElementById('repairNileBtn').addEventListener('click', repairNileMissingEntries);
+
+
+  /* ---------- تشخيص: فين الحركات اللى ناقصة من تقرير النيل؟ ---------- */
+  document.getElementById('diagNileBtn').addEventListener('click', () => {
+    const nile = companyByKey('nile');
+    const refDates = new Set(NILE_REPAIR_REF.map(x => x[0]));
+    const journal = loadJournal();
+    const norm = d => String(d || '').trim();
+    const inNile = journal.filter(r => (r.company || '') === nile.label);
+    const nileCredit = inNile.reduce((t, r) => t + (parseFloat(r.credit) || 0), 0);
+    const byCompany = {};
+    journal.forEach(r => { const k = r.company || '(بدون شركة)'; byCompany[k] = (byCompany[k] || 0) + 1; });
+    const known = new Set(payOptionsFor(nile));
+    const badPay = inNile.filter(r => !known.has(r.pay));
+
+    // كل حركة فى اليومية (أى شركة) فى التواريخ المشكوك فيها
+    const rowsOnDates = journal.filter(r => refDates.has(norm(r.date)));
+    // حركات "حركة اليوم" اللى لسه ما اترحلتش
+    const unposted = [];
+    COMPANIES.forEach(c => {
+      try{ getRowsFromDOM(c).forEach(r => { if(refDates.has(norm(r.date))) unposted.push({ ...r, company: c.label + ' (لم تُرحّل بعد)' }); }); }catch(e){}
+    });
+    // مطابقة كل بند مرجعى (تاريخ + مبلغ) على يومية النيل
+    const cnt = new Map();
+    inNile.forEach(r => { const k = norm(r.date) + '|' + (parseFloat(r.credit) || 0); cnt.set(k, (cnt.get(k) || 0) + 1); });
+    const need = new Map();
+    NILE_REPAIR_REF.forEach(([d, desc, amt, n]) => { const k = d + '|' + amt; need.set(k, (need.get(k) || 0) + n); });
+    const missingLines = [];
+    need.forEach((n, k) => { const have = cnt.get(k) || 0; if(have < n) missingLines.push([k.replace('|', ' — '), n, have]); });
+
+    const w = window.open('', '_blank');
+    if(!w){ alert('المتصفح منع النافذة. اسمح بالنوافذ المنبثقة للموقع وجرب تانى.'); return; }
+    const rowHtml = r => `<tr><td>${escapeHtml(norm(r.date))}</td><td>${escapeHtml(r.company || '')}</td><td>${escapeHtml(r.pay || '')}</td><td>${escapeHtml(r.desc || '')}</td><td>${fmt(parseFloat(r.debit) || 0)}</td><td>${fmt(parseFloat(r.credit) || 0)}</td></tr>`;
+    w.document.write(`<html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>تشخيص يومية النيل</title>
+      <style>body{font-family:Cairo,Arial,sans-serif;padding:18px} table{border-collapse:collapse;width:100%;margin:8px 0 22px} td,th{border:1px solid #ccc;padding:5px 8px;font-size:13px;text-align:center} th{background:#eee} .warn{background:#FBF1DD;padding:8px 12px;border-radius:8px;margin:6px 0}</style></head><body>
+      <h2>تشخيص يومية النيل</h2>
+      <div class="warn">عدد حركات يومية النيل: <b>${inNile.length}</b> — إجمالى دائن النيل فى اليومية: <b>${fmt(nileCredit)}</b> (المتوقع 10,947,670)</div>
+      <div>عدد الحركات لكل شركة فى اليومية: ${Object.entries(byCompany).map(([k, v]) => escapeHtml(k) + ' = ' + v).join(' ، ')}</div>
+      <div>حركات النيل بحساب دفع غير معتمد: <b>${badPay.length}</b></div>
+      <h3>بنود من المرجع مش مغطّاها يومية النيل (${missingLines.length})</h3>
+      ${missingLines.length ? `<table><tr><th>تاريخ — مبلغ</th><th>المطلوب</th><th>الموجود فى النيل</th></tr>${missingLines.map(l => `<tr><td>${l[0]}</td><td>${l[1]}</td><td>${l[2]}</td></tr>`).join('')}</table>` : '<div>✅ كل البنود موجودة فى يومية النيل.</div>'}
+      <h3>كل حركات اليومية (أى شركة) فى التواريخ المشكوك فيها (${rowsOnDates.length})</h3>
+      <table><tr><th>التاريخ</th><th>الشركة</th><th>الحساب</th><th>البيان</th><th>مدين</th><th>دائن</th></tr>${rowsOnDates.map(rowHtml).join('') || '<tr><td colspan="6">لا يوجد</td></tr>'}</table>
+      <h3>حركات فى "حركة اليوم" لسه ما اترحلتش بنفس التواريخ (${unposted.length})</h3>
+      <table><tr><th>التاريخ</th><th>الشركة</th><th>الحساب</th><th>البيان</th><th>مدين</th><th>دائن</th></tr>${unposted.map(rowHtml).join('') || '<tr><td colspan="6">لا يوجد</td></tr>'}</table>
+      </body></html>`);
+    w.document.close();
+  });
 
   document.getElementById('cloudCheckBtn').addEventListener('click', async () => {
     if(typeof window.__khaznaCloudCheck !== 'function'){ alert('طبقة فايربيز مش شغالة دلوقتى (النظام شغال محليًا).'); return; }
