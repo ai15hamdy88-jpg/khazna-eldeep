@@ -954,6 +954,7 @@
     font-family:'Cairo',sans-serif; font-size:13px; color: var(--ink); font-weight:600;
   }
   .col-filter-panel .cfp-title{ font-family:'Almarai',sans-serif; font-weight:800; font-size:13px; margin:0 0 8px; color: var(--ink); }
+  .col-filter-panel .cfp-hint{ font-size:11.5px; color: var(--ink-soft); line-height:1.7; margin:-2px 0 8px; font-weight:600; }
   .col-filter-panel .cfp-search{
     width:100%; padding:7px 9px; border:1.5px solid var(--line); border-radius:8px;
     font-family:'Cairo'; font-size:13px; box-sizing:border-box; margin-bottom:8px;
@@ -5995,13 +5996,15 @@
       return a.key.localeCompare(b.key, 'ar', { numeric:true });
     });
 
-    const sel = new Set(items.filter(i => !colSel[col.key] || colSel[col.key].has(i.key)).map(i => i.key));
+    // القيم المعلّم عليها = القيم المطلوبة. مفيش أى تعليم = مفيش فلتر (عرض الكل)
+    const sel = new Set(items.filter(i => colSel[col.key] && colSel[col.key].has(i.key)).map(i => i.key));
 
     const panel = document.createElement('div');
     panel.className = 'col-filter-panel';
     panel.dataset.owner = company.key + ':' + col.key;
     panel.innerHTML = `
       <div class="cfp-title">🔎 فلتر: ${escapeHtml(col.label)}</div>
+      <div class="cfp-hint">علّم على القيم اللى عايزها بس — الجدول بيتفلتر فورًا، ومن غير أى تعليم بيعرض الكل.</div>
       <input type="text" class="cfp-search" placeholder="ابحث فى القيم...">
       <div class="cfp-list"></div>
       <div class="cfp-foot">
@@ -6015,7 +6018,7 @@
     const searchEl = panel.querySelector('.cfp-search');
 
     function applyFilter(){
-      if(sel.size === items.length) delete colSel[col.key];
+      if(sel.size === 0 || sel.size === items.length) delete colSel[col.key];
       else colSel[col.key] = new Set(sel);
       renderCompanyJournal(company);
     }
@@ -6065,16 +6068,20 @@
     panel.querySelector('.cfp-close').addEventListener('click', closeColFilterPanel);
     renderList();
 
-    // التموضع تحت زرار العمود وجوه حدود الشاشة
-    const rect = anchorBtn.getBoundingClientRect();
-    const w = 270;
-    let left = rect.left + rect.width / 2 - w / 2;
-    left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
-    let top = rect.bottom + 6;
-    const ph = panel.offsetHeight;
-    if(top + ph > window.innerHeight - 8) top = Math.max(8, window.innerHeight - ph - 8);
-    panel.style.left = left + 'px';
-    panel.style.top = top + 'px';
+    // التموضع تحت زرار العمود وجوه حدود الشاشة (وبيتحدّث لو الصفحة اتحركت)
+    function positionPanel(){
+      const rect = anchorBtn.getBoundingClientRect();
+      const w = 270;
+      let left = rect.left + rect.width / 2 - w / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+      let top = rect.bottom + 6;
+      const ph = panel.offsetHeight;
+      if(top + ph > window.innerHeight - 8) top = Math.max(8, window.innerHeight - ph - 8);
+      panel.style.left = left + 'px';
+      panel.style.top = top + 'px';
+    }
+    panel._reposition = positionPanel;
+    positionPanel();
     searchEl.focus();
   }
 
@@ -6101,12 +6108,14 @@
   });
 
   document.addEventListener('mousedown', (e) => {
-    if(colFilterPanel && !colFilterPanel.contains(e.target) && !e.target.closest('.col-filter-btn')) closeColFilterPanel();
+    if(!colFilterPanel) return;
+    const t = (e.target instanceof Element) ? e.target : null;
+    if(!t || (!colFilterPanel.contains(t) && !t.closest('.col-filter-btn'))) closeColFilterPanel();
   });
   document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeColFilterPanel(); });
-  window.addEventListener('resize', closeColFilterPanel);
+  window.addEventListener('resize', () => { if(colFilterPanel && colFilterPanel._reposition) colFilterPanel._reposition(); });
   window.addEventListener('scroll', (e) => {
-    if(colFilterPanel && !colFilterPanel.contains(e.target)) closeColFilterPanel();
+    if(colFilterPanel && colFilterPanel._reposition && !(e.target instanceof Node && colFilterPanel.contains(e.target))) colFilterPanel._reposition();
   }, true);
 
   function getSelectedJournalIds(company){
