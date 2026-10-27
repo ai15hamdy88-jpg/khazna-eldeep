@@ -779,6 +779,11 @@
   .atm-grid .field input:focus, .atm-grid .field select:focus{ outline:none; border-color: var(--teal); }
   @media (max-width:600px){ .atm-grid{ grid-template-columns: 1fr; } }
 
+  .app-toast{
+    position:fixed; bottom:22px; left:50%; transform:translateX(-50%); z-index:1400; background:#0E2233; color:#fff;
+    padding:12px 18px; border-radius:14px; font-family:'Cairo',sans-serif; font-weight:700; font-size:13.5px; line-height:1.8;
+    box-shadow:0 14px 34px rgba(14,34,51,.4); max-width:92vw; text-align:center;
+  }
   /* ---------- تعديل جماعى للحركات المحددة فى اليوميات ---------- */
   .atm-grid .field label.bk-label{ display:flex; align-items:center; gap:6px; cursor:pointer; }
   .atm-grid .field input.bk-chk{ width:auto; padding:0; accent-color: var(--gold); cursor:pointer; }
@@ -6288,8 +6293,17 @@
       const summary = keys.map(k => `• ${labels[k]} ← ${changes[k] || '(فاضى)'}`).join('\n');
       if(!confirm(`هيتم تعديل ${ids.length} حركة فى يومية ${company.label}:\n\n${summary}\n\nمتابعة؟`)) return;
 
-      const idSet = new Set(ids);
-      const journal = loadJournal().map(r => idSet.has(r.id) ? { ...r, ...changes } : r);
+      const idSet = new Set(ids.map(String));
+      let appliedCount = 0;
+      const journal = loadJournal().map(r => {
+        if(!idSet.has(String(r.id))) return r;
+        appliedCount++;
+        return { ...r, ...changes };
+      });
+      if(appliedCount === 0){
+        alert('مفيش حركات اتعدّلت — الحركات المحددة مش موجودة فى اليومية. جرّب تحدد من جديد.');
+        return;
+      }
       saveJournal(journal);
 
       if(changes.costCenter) directoryAddItem('costCenters', changes.costCenter, '');
@@ -6301,6 +6315,16 @@
       journalEditingId = null;
       closeModal();
       renderCompanyJournal(company);
+
+      // تأكيد ظاهر إن التعديل اتطبّق (ونبّه لو فلتر عمود شغال على بند اتغيّر عشان الحركات ممكن تختفى من العرض)
+      const activeColFilters = journalColFilters[company.key] || {};
+      const hiddenByFilter = keys.some(k => activeColFilters[k]);
+      const toast = document.createElement('div');
+      toast.className = 'app-toast';
+      toast.textContent = `✅ تم تعديل ${appliedCount} حركة` +
+        (hiddenByFilter ? ' — فيه فلتر شغال على عمود اتعدّل، فممكن بعض الحركات تختفى من العرض لأنها مبقتش مطابقة للفلتر' : '');
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), hiddenByFilter ? 7000 : 3500);
     });
   }
 
