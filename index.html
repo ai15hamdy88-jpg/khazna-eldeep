@@ -24,7 +24,8 @@
     --shadow: 0 8px 24px rgba(31,42,36,0.06);
   }
   *{ box-sizing: border-box; }
-  html, body{ overflow-x: hidden; }
+  /* clip بدل hidden: نفس قص الأفقى من غير ما الـbody يبقى scroll container (عشان الشريط العلوى sticky يشتغل) */
+  html, body{ overflow-x: clip; }
   body{
     margin:0;
     background: var(--bg);
@@ -961,27 +962,19 @@
   .ab-btn.on{ background:var(--sh-brass); color:var(--sh-ink); border-color:var(--sh-brass); }
   .ab-btn:disabled{ opacity:.45; cursor:not-allowed; }
   .ab-sep{ width:1px; align-self:stretch; background:rgba(255,255,255,.14); margin:2px; }
-  .ab-chips{ display:flex; gap:6px; flex-wrap:wrap; flex:1; min-width:0; }
-  .ab-chip{ display:inline-flex; align-items:center; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.16); border-radius:10px; overflow:hidden; }
-  .ab-chip-name{
-    display:inline-flex; align-items:center; gap:8px; background:none; border:none; color:#fff;
-    font-family:'Cairo'; font-weight:700; font-size:12.5px; padding:6px 10px; cursor:pointer;
+  .ab-dock{ display:flex; gap:6px; flex-wrap:wrap; flex:1; min-width:0; }
+  .ab-page{ display:inline-flex; align-items:center; border-radius:10px; border:1px solid rgba(255,255,255,.14); overflow:hidden; }
+  .ab-page.open{ background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.26); }
+  .ab-page.shown{ box-shadow:inset 0 -3px 0 var(--tc); }
+  .ab-page-btn{
+    display:inline-flex; align-items:center; gap:8px; background:none; border:none; color:#B6C6D4;
+    font-family:'Cairo'; font-weight:700; font-size:12.5px; padding:7px 11px; cursor:pointer;
   }
-  .ab-chip-name i{ width:9px; height:9px; border-radius:50%; background:var(--tc); box-shadow:0 0 0 3px color-mix(in srgb, var(--tc) 32%, transparent); }
-  .ab-chip-x{ background:none; border:none; border-right:1px solid rgba(255,255,255,.14); color:#B6C6D4; padding:6px 8px; cursor:pointer; display:grid; place-items:center; }
-  .ab-chip-x:hover{ color:#fff; background:rgba(255,255,255,.12); }
-  .ab-add{ position:relative; }
-  .ab-menu{
-    position:absolute; top:calc(100% + 6px); right:0; min-width:240px; background:#fff; border:1px solid var(--sh-line);
-    border-radius:12px; box-shadow:0 16px 36px rgba(14,34,51,.25); padding:6px; display:none; z-index:70;
-  }
-  .ab-menu.open{ display:block; }
-  .ab-menu button{
-    display:flex; align-items:center; gap:9px; width:100%; background:none; border:none; padding:9px 10px;
-    border-radius:8px; font-family:'Cairo'; font-weight:700; font-size:13px; color:var(--sh-text); cursor:pointer; text-align:right;
-  }
-  .ab-menu button:hover{ background:#EEF3F7; }
-  .ab-menu button i{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .ab-page.open .ab-page-btn, .ab-page-btn:hover{ color:#fff; }
+  .ab-page-btn i{ width:9px; height:9px; border-radius:50%; background:var(--tc); opacity:.55; }
+  .ab-page.open .ab-page-btn i{ opacity:1; box-shadow:0 0 0 3px color-mix(in srgb, var(--tc) 32%, transparent); }
+  .ab-page-x{ background:none; border:none; border-right:1px solid rgba(255,255,255,.14); color:#B6C6D4; padding:7px 8px; cursor:pointer; display:grid; place-items:center; }
+  .ab-page-x:hover{ color:#fff; background:rgba(255,255,255,.12); }
 
   #homeView{ display:none; max-width:1180px; margin:0 auto; padding-bottom:96px; }
   body.view-home #homeView{ display:block; }
@@ -1035,31 +1028,27 @@
   .hm-metric span{ font-size:12px; color:var(--sh-muted); font-weight:700; }
   .hm-metric b{ font-family:'Almarai',sans-serif; font-size:21px; color:var(--tc); }
   .hm-metric b.neg{ color:#C0392B; }
-  .hm-side-btn{
-    display:inline-flex; align-items:center; gap:5px; background:#F1F5F8; color:var(--sh-muted); border:1px solid var(--sh-line);
-    border-radius:9px; padding:5px 9px; font-family:'Cairo'; font-size:11.5px; font-weight:700; cursor:pointer;
+  .hm-open-badge{
+    display:inline-flex; align-items:center; gap:5px; background:color-mix(in srgb, var(--tc) 14%, #fff); color:var(--tc);
+    border-radius:9px; padding:4px 10px; font-size:11.5px; font-weight:800;
   }
-  .hm-side-btn:hover{ color:var(--tc); border-color:var(--tc); }
-  .hm-tile.sel .hm-side-btn{ background:var(--tc); color:#fff; border-color:var(--tc); }
+  .hm-return{
+    display:inline-flex; align-items:center; gap:8px; margin-bottom:14px; background:#fff; color:var(--sh-ink);
+    border:1.5px solid var(--sh-line); border-radius:12px; padding:9px 16px; font-family:'Cairo'; font-weight:800; font-size:13px; cursor:pointer;
+  }
+  .hm-return:hover{ border-color:var(--sh-ink); }
 
-  #homeCompareBar{
-    position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:80; display:none; align-items:center; gap:12px;
-    background:var(--sh-ink); color:#fff; border-radius:16px; padding:10px; box-shadow:0 14px 34px rgba(14,34,51,.4);
-    font-weight:700; font-size:13px; max-width:92vw;
-  }
-  #homeCompareBar span{ padding:0 8px; }
-  body.view-home #homeCompareBar.show{ display:flex; }
 
   #workspace .pane-head{ display:none; }
   #workspace.multi{ display:grid; gap:14px; align-items:start; }
-  #workspace.multi[data-layout="cols"]{ grid-template-columns:repeat(var(--n), minmax(0,1fr)); }
+  #workspace.multi[data-layout="cols"]{ grid-template-columns:repeat(var(--cols), minmax(0,1fr)); }
   #workspace.multi[data-layout="rows"]{ grid-template-columns:minmax(0,1fr); }
-  #workspace.multi > .page.active{
+  #workspace.multi > .page.active, #workspace.maxed > .page.active{
     background:var(--card); border:1px solid var(--line); border-radius:16px; padding:0 14px 14px;
     box-shadow:var(--shadow); min-width:0; overflow:auto; max-height:calc(100vh - 86px);
   }
   #workspace.multi[data-layout="rows"] > .page.active{ max-height:none; overflow:visible; }
-  #workspace.multi .pane-head{
+  #workspace.multi .pane-head, #workspace.maxed .pane-head{
     display:flex; align-items:center; gap:8px; position:sticky; top:0; z-index:5; background:var(--card);
     margin:0 -14px 12px; padding:10px 14px; box-shadow:inset 0 -3px 0 var(--tc);
   }
@@ -1074,8 +1063,8 @@
   .pane-btn:hover{ color:var(--rose); border-color:var(--rose); }
   @media (max-width:1000px){
     #workspace.multi[data-layout="cols"]{ grid-template-columns:minmax(0,1fr); }
-    #workspace.multi > .page.active{ max-height:none; overflow:visible; }
-    #workspace.multi .pane-head{ position:static; }
+    #workspace.multi > .page.active, #workspace.maxed > .page.active{ max-height:none; overflow:visible; }
+    #workspace.multi .pane-head, #workspace.maxed .pane-head{ position:static; }
   }
   @media (max-width:820px){
     .hm-hero{ grid-template-columns:minmax(0,1fr); padding:22px 20px 18px; }
@@ -1443,16 +1432,12 @@
     </button>
     <button type="button" class="ab-btn on" id="abHome"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h4.5v-5.5h4V20h4.5V10"/></svg>الرئيسية</button>
     <span class="ab-sep"></span>
-    <div class="ab-chips" id="abChips"></div>
-    <div class="ab-add" id="abAddWrap" style="display:none;">
-      <button type="button" class="ab-btn" id="abAddBtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>فتح بجانب</button>
-      <div class="ab-menu" id="abAddMenu"></div>
-    </div>
+    <div class="ab-dock" id="abDock"></div>
+    <button type="button" class="ab-btn" id="abRestoreBtn" style="display:none;"></button>
     <button type="button" class="ab-btn" id="abLayoutBtn" style="display:none;"></button>
   </div>
 
   <div id="homeView"></div>
-  <div id="homeCompareBar"></div>
 
   <header class="page">
     <div>
@@ -5577,6 +5562,7 @@
     check:     '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
     close:     '<path d="M6 6l12 12M18 6 6 18"/>',
     expand:    '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>',
+    collapse:  '<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/>',
     cols:      '<rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="16" rx="1.5"/>',
     rows:      '<rect x="4" y="3" width="16" height="8" rx="1.5"/><rect x="4" y="13" width="16" height="8" rx="1.5"/>',
   };
@@ -5607,100 +5593,99 @@
     directory(){ renderDirectoryPage(); renderSystemLockSection(); },
   };
 
-  const MAX_PANES = 3;
   const WS_LAYOUT_KEY = 'ui_workspace_layout'; // تفضيل عرض محلى بس (من غير بادئة khazna_ عشان مايتزامنش)
-  let openPanes = [];
+  let openPanes = [];     // الصفحات المفتوحة بالترتيب (بتفضل مفتوحة وحالتها محفوظة)
+  let viewHome = true;    // الشاشة الرئيسية ظاهرة؟ (الصفحات المفتوحة بتفضل مفتوحة تحتها)
+  let maxKey = null;      // صفحة متكبّرة مؤقتًا (الباقى بيفضل مفتوح)
   let workspaceLayout = 'cols';
   try{ if(localStorage.getItem(WS_LAYOUT_KEY) === 'rows') workspaceLayout = 'rows'; }catch(e){}
-  const homeSel = new Set();
   let lastHomeHtml = '';
 
   const pageByKey = k => APP_PAGES.find(p => p.key === k);
+  const showingHome = () => viewHome || openPanes.length === 0;
+  const visibleKeys = () => (maxKey && openPanes.includes(maxKey)) ? [maxKey] : openPanes.slice();
 
-  function setPanes(keys, forceShow){
-    const prev = new Set(openPanes);
-    openPanes = keys.filter((k, i) => pageByKey(k) && keys.indexOf(k) === i).slice(0, MAX_PANES);
+  function runOnShow(key){
+    const fn = PAGE_ON_SHOW[key];
+    if(fn){ try{ fn(); }catch(err){ console.error('فشل تجهيز الصفحة', key, err); } }
+  }
+
+  // الضغط على أى صفحة: لو مش مفتوحة بتتفتح جنب المفتوح، ولو مفتوحة بترجعلها
+  function openPage(name){
+    if(!pageByKey(name)) return;
+    const wasHome = showingHome();
+    if(!openPanes.includes(name)) openPanes.push(name);
+    viewHome = false;
+    if(maxKey && maxKey !== name) maxKey = null;
     renderShell();
-    openPanes.forEach(k => {
-      if(!prev.has(k) || (forceShow && forceShow.includes(k))){
-        const fn = PAGE_ON_SHOW[k];
-        if(fn){ try{ fn(); }catch(err){ console.error('فشل تجهيز الصفحة', k, err); } }
-      }
-    });
+    runOnShow(name);
+    if(wasHome) window.scrollTo({ top:0 }); else focusPane(name);
   }
-
-  // فتح صفحة وحدها (نفس سلوك التبويبات القديمة)
-  function switchPage(name){
-    if(!pageByKey(name)) return;
-    homeSel.clear();
-    setPanes([name], [name]);
-    window.scrollTo({ top:0 });
+  function switchPage(name){ openPage(name); }
+  function closePane(name){
+    openPanes = openPanes.filter(k => k !== name);
+    if(maxKey === name) maxKey = null;
+    if(openPanes.length === 0) viewHome = true;
+    renderShell();
   }
-  function openBeside(name){
-    if(!pageByKey(name)) return;
-    if(openPanes.includes(name)){ focusPane(name); return; }
-    if(openPanes.length >= MAX_PANES){
-      alert(`أقصى عدد صفحات تتفتح جنب بعض هو ${MAX_PANES} — أغلق صفحة الأول.`);
-      return;
-    }
-    setPanes([...openPanes, name]);
-  }
-  function openMany(keys){ homeSel.clear(); setPanes(keys, keys); window.scrollTo({ top:0 }); }
-  function closePane(name){ setPanes(openPanes.filter(k => k !== name)); }
-  function goHome(){ setPanes([]); window.scrollTo({ top:0 }); }
+  function goHome(){ viewHome = true; renderShell(); window.scrollTo({ top:0 }); }
+  function toggleMax(name){ maxKey = (maxKey === name) ? null : name; renderShell(); }
   function focusPane(name){
     const el = document.getElementById(pageByKey(name).id);
     if(el) el.scrollIntoView({ behavior:'smooth', block:'nearest' });
   }
   window.goHome = goHome;
-  window.openBeside = openBeside;
+  window.openBeside = openPage;
 
-  function renderAppBar(){
-    const isHome = openPanes.length === 0;
-    const abHome = document.getElementById('abHome');
-    abHome.classList.toggle('on', isHome);
-
-    document.getElementById('abChips').innerHTML = openPanes.map(k => {
-      const p = pageByKey(k);
-      return `<span class="ab-chip" style="--tc:${p.color}">
-        <button type="button" class="ab-chip-name" data-solo="${k}" title="عرض هذه الصفحة وحدها"><i></i>${p.short}</button>
-        <button type="button" class="ab-chip-x" data-close="${k}" title="إغلاق ${p.short}">${shSvg('close', 12)}</button>
+  function renderDock(){
+    const home = showingHome();
+    const vis = new Set(home ? [] : visibleKeys());
+    document.getElementById('abHome').classList.toggle('on', home);
+    document.getElementById('abDock').innerHTML = APP_PAGES.map(p => {
+      const open = openPanes.includes(p.key);
+      return `<span class="ab-page ${open ? 'open' : ''} ${vis.has(p.key) ? 'shown' : ''}" style="--tc:${p.color}">
+        <button type="button" class="ab-page-btn" data-page="${p.key}" title="${open ? 'الصفحة مفتوحة — اضغط للرجوع ليها' : 'افتح ' + p.title + ' جنب الصفحات المفتوحة'}"><i></i>${p.short}</button>
+        ${open ? `<button type="button" class="ab-page-x" data-close="${p.key}" title="إغلاق ${p.short}">${shSvg('close', 12)}</button>` : ''}
       </span>`;
     }).join('');
 
-    const rest = APP_PAGES.filter(p => !openPanes.includes(p.key));
-    const addWrap = document.getElementById('abAddWrap');
-    const addBtn = document.getElementById('abAddBtn');
-    addWrap.style.display = (isHome || rest.length === 0) ? 'none' : '';
-    addBtn.disabled = openPanes.length >= MAX_PANES;
-    addBtn.title = addBtn.disabled ? `الحد الأقصى ${MAX_PANES} صفحات` : 'افتح صفحة أخرى جنب الصفحات المفتوحة';
-    document.getElementById('abAddMenu').innerHTML = rest.map(p =>
-      `<button type="button" data-add="${p.key}"><i style="background:${p.color}"></i>${p.title}</button>`).join('');
-    document.getElementById('abAddMenu').classList.remove('open');
-
     const layoutBtn = document.getElementById('abLayoutBtn');
-    layoutBtn.style.display = openPanes.length > 1 ? '' : 'none';
+    layoutBtn.style.display = (!home && visibleKeys().length > 1) ? '' : 'none';
     layoutBtn.innerHTML = shSvg(workspaceLayout === 'cols' ? 'cols' : 'rows', 16) + (workspaceLayout === 'cols' ? 'جنب بعض' : 'فوق بعض');
     layoutBtn.title = 'غيّر طريقة ترتيب الصفحات المفتوحة';
+
+    const restoreBtn = document.getElementById('abRestoreBtn');
+    restoreBtn.style.display = (!home && maxKey && openPanes.length > 1) ? '' : 'none';
+    restoreBtn.innerHTML = shSvg('collapse', 16) + 'عرض كل الصفحات';
   }
 
   function renderShell(){
-    const isHome = openPanes.length === 0;
-    document.body.classList.toggle('view-home', isHome);
-    document.body.classList.toggle('theme-v2', !isHome);
+    const home = showingHome();
+    document.body.classList.toggle('view-home', home);
+    document.body.classList.toggle('theme-v2', !home);
+    const vis = home ? [] : visibleKeys();
     APP_PAGES.forEach(p => {
       const pg = document.getElementById(p.id);
       if(!pg) return;
-      const idx = openPanes.indexOf(p.key);
-      pg.classList.toggle('active', idx > -1);
-      pg.style.order = idx > -1 ? String(idx) : '';
+      const shown = vis.includes(p.key);
+      pg.classList.toggle('active', shown);
+      pg.style.order = shown ? String(openPanes.indexOf(p.key)) : '';
+      const solo = pg.querySelector('.pane-btn[data-act="solo"]');
+      if(solo){
+        const isMax = maxKey === p.key;
+        solo.innerHTML = shSvg(isMax ? 'collapse' : 'expand', 16);
+        solo.title = isMax ? 'رجوع لعرض كل الصفحات المفتوحة' : 'تكبير هذه الصفحة (الباقى بيفضل مفتوح)';
+        solo.style.display = openPanes.length > 1 ? '' : 'none';
+      }
     });
     const ws = document.getElementById('workspace');
-    ws.classList.toggle('multi', openPanes.length > 1);
+    ws.classList.toggle('multi', vis.length > 1);
+    ws.classList.toggle('maxed', vis.length === 1 && !!maxKey && openPanes.length > 1);
     ws.dataset.layout = workspaceLayout;
-    ws.style.setProperty('--n', String(Math.max(1, openPanes.length)));
-    renderAppBar();
-    if(isHome){ refreshHome(true); } else { renderCompareBar(); }
+    const n = vis.length;
+    ws.style.setProperty('--cols', String(n <= 3 ? Math.max(1, n) : (n === 4 ? 2 : 3)));
+    renderDock();
+    if(home) refreshHome(true);
   }
 
   /* ----- الشاشة الرئيسية ----- */
@@ -5711,15 +5696,13 @@
   }
 
   function tileHtml(p, big, metricHtml){
-    const isPage = !!pageByKey(p.key);
-    const sel = homeSel.has(p.key);
+    const open = openPanes.includes(p.key);
     const iconInner = p.mono ? p.mono : shSvg(p.icon, big ? 28 : 24);
     return `
-      <article class="hm-tile ${big ? 'hm-big' : ''} ${sel ? 'sel' : ''}" style="--tc:${p.color}" tabindex="0" role="button"
-               data-open="${p.key}" aria-label="${p.title}">
+      <article class="hm-tile ${big ? 'hm-big' : ''}" style="--tc:${p.color}" tabindex="0" role="button" data-open="${p.key}" aria-label="${p.title}">
         <div class="hm-top">
           <span class="hm-ico">${iconInner}</span>
-          ${isPage ? `<button type="button" class="hm-side-btn" data-side="${p.key}" title="اختار أكتر من صفحة وافتحهم جنب بعض">${shSvg(sel ? 'check' : 'plus', 13)}${sel ? 'مضافة' : 'جنب بعض'}</button>` : ''}
+          ${open ? '<span class="hm-open-badge">مفتوحة</span>' : ''}
         </div>
         <h3>${p.title}</h3>
         <p>${p.desc}</p>
@@ -5740,6 +5723,9 @@
     const legend = bal.list.map(a =>
       `<li class="${a.excludedFromTotal ? 'ex' : ''}"><i style="background:${acctColor(a.name)}"></i><span>${escapeHtml(a.name)}</span><b class="${a.current < 0 ? 'neg' : ''}">${fmt(a.current)}</b>${a.excludedFromTotal ? '<em>خارج الإجمالى</em>' : ''}</li>`).join('');
     const dateLabel = new Date().toLocaleDateString('ar-EG', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+    const returnBtn = openPanes.length
+      ? `<button type="button" class="hm-return" data-return>↩ رجوع للصفحات المفتوحة (${openPanes.length})</button>` : '';
 
     const hero = `
       <section class="hm-hero">
@@ -5773,7 +5759,7 @@
     let journalCount = 0;
     try{ journalCount = loadJournal().length; }catch(e){}
 
-    const html = hero +
+    const html = returnBtn + hero +
       `<div class="hm-big-row">${APP_PAGES.filter(p => p.company).map(ledgerTile).join('')}</div>` +
       `<div class="hm-grid">` +
         APP_PAGES.filter(p => !p.company).map(p => tileHtml(p, false,
@@ -5784,28 +5770,6 @@
     if(force || html !== lastHomeHtml){
       if(html !== lastHomeHtml){ homeEl.innerHTML = html; lastHomeHtml = html; }
     }
-    renderCompareBar();
-  }
-
-  function renderCompareBar(){
-    const bar = document.getElementById('homeCompareBar');
-    const n = homeSel.size;
-    bar.classList.toggle('show', n > 0);
-    if(!n){ bar.innerHTML = ''; return; }
-    const names = [...homeSel].map(k => pageByKey(k).short).join(' + ');
-    bar.innerHTML = `<span>${names}</span>
-      <button type="button" class="ab-btn on" data-go>${n > 1 ? `فتح ${n} صفحات جنب بعض` : 'فتح الصفحة'}</button>
-      <button type="button" class="ab-btn" data-clear>مسح الاختيار</button>`;
-  }
-
-  function toggleHomeSel(key){
-    if(!pageByKey(key)) return;
-    if(homeSel.has(key)) homeSel.delete(key);
-    else{
-      if(homeSel.size >= MAX_PANES){ alert(`أقصى عدد صفحات تتفتح جنب بعض هو ${MAX_PANES}.`); return; }
-      homeSel.add(key);
-    }
-    refreshHome(true);
   }
 
   function initAppShell(){
@@ -5819,64 +5783,46 @@
       const head = document.createElement('div');
       head.className = 'pane-head';
       head.innerHTML = `<span class="pane-dot"></span><b class="pane-title">${p.title}</b><span class="pane-spacer"></span>
-        <button type="button" class="pane-btn" data-act="solo" title="عرض هذه الصفحة وحدها">${shSvg('expand', 16)}</button>
+        <button type="button" class="pane-btn" data-act="solo">${shSvg('expand', 16)}</button>
         <button type="button" class="pane-btn" data-act="close" title="إغلاق الصفحة">${shSvg('close', 16)}</button>`;
       head.addEventListener('click', (e) => {
         const b = e.target.closest('[data-act]');
         if(!b) return;
-        if(b.dataset.act === 'close') closePane(p.key); else switchPage(p.key);
+        if(b.dataset.act === 'close') closePane(p.key); else toggleMax(p.key);
       });
       pg.insertBefore(head, pg.firstChild);
     });
 
     document.getElementById('abBrand').addEventListener('click', goHome);
     document.getElementById('abHome').addEventListener('click', goHome);
-    document.getElementById('abChips').addEventListener('click', (e) => {
-      const solo = e.target.closest('[data-solo]');
+    document.getElementById('abDock').addEventListener('click', (e) => {
       const close = e.target.closest('[data-close]');
+      const page = e.target.closest('[data-page]');
       if(close) closePane(close.dataset.close);
-      else if(solo){ if(openPanes.length > 1) switchPage(solo.dataset.solo); else focusPane(solo.dataset.solo); }
+      else if(page) openPage(page.dataset.page);
     });
-    const menu = document.getElementById('abAddMenu');
-    document.getElementById('abAddBtn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      menu.classList.toggle('open');
-    });
-    menu.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-add]');
-      if(b) openBeside(b.dataset.add);
-    });
-    document.addEventListener('click', (e) => {
-      if(!e.target.closest('#abAddWrap')) menu.classList.remove('open');
-    });
-    document.addEventListener('keydown', (e) => { if(e.key === 'Escape') menu.classList.remove('open'); });
     document.getElementById('abLayoutBtn').addEventListener('click', () => {
       workspaceLayout = workspaceLayout === 'cols' ? 'rows' : 'cols';
       try{ localStorage.setItem(WS_LAYOUT_KEY, workspaceLayout); }catch(e){}
       renderShell();
     });
+    document.getElementById('abRestoreBtn').addEventListener('click', () => { maxKey = null; renderShell(); });
 
     const homeEl = document.getElementById('homeView');
     homeEl.addEventListener('click', (e) => {
-      const side = e.target.closest('[data-side]');
-      if(side){ e.stopPropagation(); toggleHomeSel(side.dataset.side); return; }
+      if(e.target.closest('[data-return]')){ viewHome = false; renderShell(); window.scrollTo({ top:0 }); return; }
       const tile = e.target.closest('[data-open]');
       if(!tile) return;
       const key = tile.dataset.open;
       if(key === 'archive'){ window.viewArchivedYear(); return; }
-      if(e.ctrlKey || e.metaKey || e.shiftKey){ toggleHomeSel(key); return; }
-      switchPage(key);
+      openPage(key);
     });
     homeEl.addEventListener('keydown', (e) => {
       if((e.key === 'Enter' || e.key === ' ') && e.target.matches('.hm-tile')){ e.preventDefault(); e.target.click(); }
     });
-    document.getElementById('homeCompareBar').addEventListener('click', (e) => {
-      if(e.target.closest('[data-go]')) openMany([...homeSel]);
-      else if(e.target.closest('[data-clear]')){ homeSel.clear(); refreshHome(true); }
-    });
 
     // تحديث أرقام الرئيسية لو فتحتها فترة (مثلاً بعد مزامنة من جهاز تانى)
-    setInterval(() => { if(openPanes.length === 0 && !document.hidden) refreshHome(false); }, 4000);
+    setInterval(() => { if(showingHome() && !document.hidden) refreshHome(false); }, 4000);
 
     renderShell();
   }
