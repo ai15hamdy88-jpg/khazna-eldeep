@@ -790,8 +790,13 @@
   .atm-grid .field.bk-on input:not(.bk-chk), .atm-grid .field.bk-on select{ border-color: var(--gold); background: var(--gold-bg); }
   .bk-note{ font-size:12px; color: var(--ink-soft); margin:2px 0 0; line-height:1.8; }
 
-  /* ===== تصميم v2 "حبر وجواهر" — تجربة على صفحة اليوميات (نفس روح الشاشة الرئيسية) ===== */
-  body.theme-v2{ background:#E9EEF3; background-image:none; }
+  /* ===== تصميم v2 "حبر وجواهر" — كل الصفحات (نفس روح الشاشة الرئيسية) ===== */
+  body.theme-v2{
+    background:#E9EEF3; background-image:none;
+    --bg:#F3F6F9; --bg-2:#E9EEF3; --ink:#16222D; --ink-soft:#66788A; --line:#D6DEE6;
+    --teal:#0E8F78; --teal-bg:#E1F5F0; --rose:#D63F5A; --rose-bg:#FCE8EC; --gold:#C77A00; --gold-bg:#FDF1DC;
+    --shadow:0 10px 30px rgba(14,34,51,.07);
+  }
   body.theme-v2 .accounts-bar{ border-radius:20px; border-color:#D6DEE6; box-shadow:0 10px 30px rgba(14,34,51,.07); padding:14px 18px; }
   body.theme-v2 .accounts-bar .section-title{ font-family:'Almarai',sans-serif; font-weight:800; color:#0E2233; }
   body.theme-v2 .accounts-bar .group-total{ background:#F1F5F9; border-radius:12px; }
@@ -801,42 +806,116 @@
   body.theme-v2 .danger-btn-lg{ background:#fff; color:#B3243F; border:1.5px solid #E7A3B0; box-shadow:none; border-radius:10px; }
   body.theme-v2 .danger-btn-lg:hover{ background:#FCE8EC; }
 
-  #pageJournal{
-    --teal:#0E8F78; --teal-bg:#E1F5F0; --rose:#D63F5A; --rose-bg:#FCE8EC; --gold:#C77A00; --gold-bg:#FDF1DC;
-    --line:#D6DEE6; --bg:#F3F6F9; --bg-2:#E9EEF3; --ink:#16222D; --ink-soft:#66788A;
-    --shadow:0 10px 30px rgba(14,34,51,.07);
-    --jv-accent: var(--tc, #6C56E0);
+  /* لون كل صفحة (--tc) بيتحوّل لـ accent بتاعها */
+  #workspace > .page{ --jv-accent: var(--tc, #6C56E0); }
+  #workspace > .page .company-block[data-company="first"],
+  #workspace > .page .cash-count-card[data-company="first"]{ --company-color:#12A38A; }
+  #workspace > .page .company-block[data-company="nile"],
+  #workspace > .page .cash-count-card[data-company="nile"]{ --company-color:#2B6FD6; }
+
+  /* عناوين الأقسام: شريط لون الصفحة */
+  #workspace > .page .section-title::before{
+    content:''; display:inline-block; width:6px; height:17px; border-radius:3px; background:var(--jv-accent);
+    margin-inline-end:10px; vertical-align:-3px;
   }
-  #pageJournal .company-block[data-company="first"]{ --company-color:#12A38A; }
-  #pageJournal .company-block[data-company="nile"]{ --company-color:#2B6FD6; }
-  #pageJournal > section.ledger{ padding:14px 18px; }
-  #pageJournal .company-heading{ margin-bottom:12px; }
-  #pageJournal .company-block .company-heading h2{
+  #workspace > .page .dir-group-title{ border-right:5px solid var(--jv-accent); padding-right:10px; }
+  #workspace > .page #dirAutoScanBtn{ background:var(--jv-accent) !important; }
+  #workspace > .page #fullBackupBtn{ background:#2B6FD6 !important; }
+  #workspace > .page #fullRestoreBtn, #workspace > .page #lockUnlockBtn{ background:#D63F5A !important; }
+  #workspace > .page #lockEnableBtn{ background:#0E2233 !important; }
+  #workspace > .page .company-heading{ margin-bottom:12px; }
+  #workspace > .page .company-block .company-heading h2{
     display:inline-flex; align-items:center; gap:8px; background:var(--company-color); color:#fff;
     padding:7px 16px; border-radius:12px; font-size:14px;
   }
-  #pageJournal .ledger{ border-radius:20px; border-color:var(--line); box-shadow:var(--shadow); }
-  #pageJournal .ledger-head{ background:#0E2233; border-top:4px solid var(--company-color); padding:14px 18px; gap:12px; }
-  #pageJournal .ledger-head h2{ font-size:15px; font-weight:800; }
-  #pageJournal .ledger-head-actions{ gap:7px; }
-  #pageJournal .ledger-head-actions button{
+
+  /* الكروت الملخصة (حركة اليوم + التقارير) */
+  #workspace > .page .card{ border-radius:14px; border-top:4px solid #8B9AA8; padding:11px 14px 10px; }
+  #workspace > .page .card.income{ border-top-color:var(--teal); }
+  #workspace > .page .card.expense{ border-top-color:var(--rose); }
+  #workspace > .page .card.net{ border-color:#F0DDB5; border-top-color:var(--gold); }
+  #workspace > .page .card .label{ font-size:12px; font-weight:700; }
+  #workspace > .page .cards .card .dot, #workspace > .page .report-summary-cards .card .dot{ display:none; }
+  #workspace > .page .card .value{ font-size:21px; }
+  #workspace > .page .card.net .value{ font-size:22px; }
+
+  /* الأقسام البيضاء (إعدادات التقرير / الإيصالات / الدليل) */
+  #workspace > .page .report-card, #workspace > .page .receipt-form-card,
+  #workspace > .page .receipt-queue-card, #workspace > .page .report-account-section{
+    border-radius:20px; border-color:var(--line); box-shadow:var(--shadow);
+  }
+  #workspace > .page .report-account-head{ background:#F7F9FC; }
+
+  /* بطاقة الجدول: شريط داكن + لون الشركة */
+  #workspace > .page .ledger{ border-radius:20px; border-color:var(--line); box-shadow:var(--shadow); }
+  #workspace > .page .ledger-head{ background:#0E2233; border-top:4px solid var(--company-color, var(--jv-accent)); padding:14px 18px; gap:12px; }
+  #workspace > .page .ledger-head h2{ font-size:15px; font-weight:800; }
+  #workspace > .page .ledger-head-actions{ gap:7px; width:100%; align-items:center; }
+  #workspace > .page .ledger-head-actions button{
     background:rgba(255,255,255,.08) !important; color:#E8EFF5 !important; border:1px solid rgba(255,255,255,.18) !important;
     border-radius:10px; padding:7px 12px; font-size:12px; font-weight:700; box-shadow:none;
   }
-  #pageJournal .ledger-head-actions button:hover{ background:rgba(255,255,255,.17) !important; }
-  #pageJournal .ledger-head-actions [id^="editSelectedBtn_"]{ background:var(--jv-accent) !important; border-color:var(--jv-accent) !important; color:#fff !important; }
-  #pageJournal .ledger-head-actions [id^="editSelectedBtn_"]:hover{ background:var(--jv-accent) !important; filter:brightness(1.12); }
-  #pageJournal .ledger-head-actions [id^="deleteSelectedBtn_"]{ background:#D63F5A !important; border-color:#D63F5A !important; color:#fff !important; }
-  #pageJournal .ledger-head-actions [id^="deleteSelectedBtn_"]:hover{ background:#D63F5A !important; filter:brightness(1.12); }
-  #pageJournal .ledger-head-actions [id^="clearJournalBtn_"]{ background:transparent !important; color:#FF9FB0 !important; border:1px solid rgba(255,143,162,.5) !important; }
+  #workspace > .page .ledger-head-actions button:hover{ background:rgba(255,255,255,.17) !important; }
+  #workspace > .page .ledger-head-actions button[id^="addRowBtn_"]{ background:var(--company-color, var(--jv-accent)) !important; border-color:var(--company-color, var(--jv-accent)) !important; color:#fff !important; }
+  #workspace > .page .ledger-head-actions button[id^="postBtn_"]{ background:#E9B44C !important; border-color:#E9B44C !important; color:#0E2233 !important; }
+  #workspace > .page .ledger-head-actions button[id^="editSelectedBtn_"]{ background:var(--jv-accent) !important; border-color:var(--jv-accent) !important; color:#fff !important; margin-inline-start:auto; }
+  #workspace > .page .ledger-head-actions button[id^="deleteSelectedBtn_"]{ background:#D63F5A !important; border-color:#D63F5A !important; color:#fff !important; }
+  #workspace > .page .ledger-head-actions button[id^="clearJournalBtn_"],
+  #workspace > .page .ledger-head-actions button[id^="clearLedgerBtn_"]{ background:transparent !important; color:#FF9FB0 !important; border:1px solid rgba(255,143,162,.5) !important; }
+  #workspace > .page .ledger-head-actions button[id^="clearLedgerBtn_"]{ margin-inline-start:auto; }
+  #workspace > .page .ledger-head-actions button[id^="addRowBtn_"]:hover,
+  #workspace > .page .ledger-head-actions button[id^="postBtn_"]:hover,
+  #workspace > .page .ledger-head-actions button[id^="editSelectedBtn_"]:hover,
+  #workspace > .page .ledger-head-actions button[id^="deleteSelectedBtn_"]:hover{ filter:brightness(1.1); }
 
-  #pageJournal .filters-row{ background:#F7F9FC; border-bottom:1px solid var(--line); padding:16px 20px; gap:12px 14px; }
-  #pageJournal .filter-field label{ font-size:11.5px; font-weight:800; color:var(--ink-soft); }
-  #pageJournal .filter-field input, #pageJournal .filter-field select{ border-radius:11px; border:1.5px solid var(--line); padding:9px 12px; }
-  #pageJournal .filter-field input:focus, #pageJournal .filter-field select:focus{
+  /* الأزرار الأساسية خارج شريط الجدول */
+  #workspace > .page button.add-row, #workspace > .page .post-btn{ background:var(--jv-accent); color:#fff; border-radius:10px; }
+  #workspace > .page button.add-row:hover, #workspace > .page .post-btn:hover{ background:var(--jv-accent); filter:brightness(1.1); }
+  #workspace > .page .exportAcctBtn, #workspace > .page #repPrintBtn{ background:var(--jv-accent) !important; }
+
+  /* الفلاتر والحقول */
+  #workspace > .page .filters-row{ background:#F7F9FC; border-bottom:1px solid var(--line); padding:16px 20px; gap:12px 14px; }
+  #workspace > .page .report-card .filters-row{ border-radius:14px; border:1px solid var(--line); }
+  #workspace > .page .filter-field label{ font-size:11.5px; font-weight:800; color:var(--ink-soft); }
+  #workspace > .page :is(.filter-field, .field, .dir-add-row) :is(input, select, textarea){ border-radius:11px; }
+  #workspace > .page :is(.filter-field, .field, .dir-add-row) :is(input, select, textarea):focus{
     outline:none; border-color:var(--jv-accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--jv-accent) 18%, transparent);
   }
+  #workspace > .page .report-check-item.checked{ border-color:var(--jv-accent); background:color-mix(in srgb, var(--jv-accent) 10%, #fff); }
+  #workspace > .page .report-check-item input, #workspace > .page .pdf-opt input{ accent-color:var(--jv-accent); }
+  #workspace > .page .report-check-item:hover, #workspace > .page .report-check-toolbar button:hover{ border-color:var(--jv-accent); color:var(--ink); }
+  #workspace > .page .report-col-item.checked{ border-color:var(--gold); }
+  #workspace > .page .dir-add-row button{ background:var(--jv-accent); border-radius:11px; }
+  #workspace > .page .dir-add-row button:hover{ background:var(--jv-accent); filter:brightness(1.1); }
+  #workspace > .page .dir-item{ border-radius:12px; }
+  #workspace > .page .cash-count-card{ border-radius:18px; }
+  #workspace > .page .cash-count-card .cc-head{ background:var(--company-color, var(--jv-accent)); }
+  #workspace > .page .cash-count-card[data-company="nile"] table.cc-table tfoot td{ background:#E4EDFB; color:#2B6FD6; }
+  #workspace > .page .cash-count-card[data-company="first"] table.cc-table tfoot td{ background:#DDF3EE; color:#0E8F78; }
 
+  /* الجداول (حركة اليوم / اليوميات / التقارير) */
+  #workspace > .page :is(.ledger, .report-account-section) .table-scroll{ margin-top:10px; }
+  #workspace > .page :is(.ledger, .report-account-section) thead th{
+    background:color-mix(in srgb, var(--company-color, var(--jv-accent)) 9%, #fff);
+    color:color-mix(in srgb, var(--company-color, var(--jv-accent)) 62%, #0E2233);
+    border-bottom:2px solid var(--company-color, var(--jv-accent)); padding:11px 10px; font-size:12px;
+  }
+  #workspace > .page :is(.ledger, .report-account-section) tbody td{ padding:8px 10px; font-size:13px; border-bottom:1px solid #E8EDF2; }
+  #workspace > .page :is(.ledger, .report-account-section) tbody tr:nth-child(even){ background:#F8FAFC; }
+  #workspace > .page :is(.ledger, .report-account-section) tbody tr:hover{ background:color-mix(in srgb, var(--company-color, var(--jv-accent)) 8%, #fff); }
+  #workspace > .page :is(.ledger, .report-account-section) tfoot td{ background:#0E2233; color:#fff; border-top:none; padding:13px 16px; }
+  #workspace > .page :is(.ledger, .report-account-section) tfoot td.debit{ color:#5EE0C4; }
+  #workspace > .page :is(.ledger, .report-account-section) tfoot td.credit{ color:#FF9FB0; }
+  #workspace > .page .row-chk, #workspace > .page .chk-th input[type="checkbox"]{ accent-color:var(--jv-accent); }
+  #workspace > .page .mini-btn{ border-radius:9px; width:30px; height:30px; }
+  #workspace > .page .mini-btn.edit-je{ color:var(--jv-accent); }
+  #workspace > .page .mini-btn.edit-je:hover{ background:color-mix(in srgb, var(--jv-accent) 12%, #fff); }
+  #workspace > .page .col-filter-btn{ border-radius:7px; border-color:color-mix(in srgb, var(--company-color, var(--jv-accent)) 30%, #fff); color:var(--company-color, var(--jv-accent)); background:#fff; }
+  #workspace > .page .col-filter-btn.active{ background:var(--jv-accent); border-color:var(--jv-accent); color:#fff; }
+  #workspace > .page .empty-state{ padding:44px 20px; background:#F7F9FC; border-top:1px solid var(--line); font-weight:600; }
+
+  /* اليوميات فقط */
+  #pageJournal > section.ledger{ padding:14px 18px; }
   #pageJournal .journal-stats{ grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; padding:16px 20px 6px; }
   #pageJournal .journal-stats .box{ background:#fff; border:1px solid var(--line); border-top:4px solid #8B9AA8; border-radius:14px; padding:12px 16px; }
   #pageJournal .journal-stats .box:nth-child(2){ border-top-color:var(--teal); }
@@ -844,32 +923,10 @@
   #pageJournal .journal-stats .box:nth-child(4){ border-top-color:var(--gold); background:var(--gold-bg); }
   #pageJournal .journal-stats .box .l{ font-size:12px; font-weight:700; }
   #pageJournal .journal-stats .box .v{ font-size:22px; }
-
-  #pageJournal .table-scroll{ margin-top:10px; }
-  #pageJournal thead th{
-    background:color-mix(in srgb, var(--company-color) 9%, #fff);
-    color:color-mix(in srgb, var(--company-color) 62%, #0E2233);
-    border-bottom:2px solid var(--company-color); padding:11px 10px; font-size:12px;
-  }
-  #pageJournal tbody td{ padding:8px 10px; font-size:13px; border-bottom:1px solid #E8EDF2; }
-  #pageJournal tbody tr:nth-child(even){ background:#F8FAFC; }
-  #pageJournal tbody tr:hover{ background:color-mix(in srgb, var(--company-color) 8%, #fff); }
-  #pageJournal tfoot td{ background:#0E2233; color:#fff; border-top:none; padding:13px 16px; }
-  #pageJournal tfoot td.debit{ color:#5EE0C4; }
-  #pageJournal tfoot td.credit{ color:#FF9FB0; }
-  /* خانات المدين/الدائن: كانت بتاخد display:flex من صفحة حركة اليوم فبتبوظ شكل الخلية فى اليوميات */
+  /* خانات المدين/الدائن كانت بتاخد display:flex من صفحة حركة اليوم فبتبوظ شكل الخلية فى اليوميات */
   #pageJournal td.num-cell{ display:table-cell; text-align:center; font-weight:700; font-variant-numeric:tabular-nums; }
   #pageJournal td.num-cell.debit{ color:var(--teal); }
   #pageJournal td.num-cell.credit{ color:var(--rose); }
-  #pageJournal .ledger-head-actions{ width:100%; align-items:center; }
-  #pageJournal .ledger-head-actions [id^="editSelectedBtn_"]{ margin-inline-start:auto; }
-  #pageJournal .row-chk, #pageJournal .chk-th input[type="checkbox"]{ accent-color:var(--jv-accent); }
-  #pageJournal .mini-btn{ border-radius:9px; width:30px; height:30px; }
-  #pageJournal .mini-btn.edit-je{ color:var(--jv-accent); }
-  #pageJournal .mini-btn.edit-je:hover{ background:color-mix(in srgb, var(--jv-accent) 12%, #fff); }
-  #pageJournal .col-filter-btn{ border-radius:7px; border-color:color-mix(in srgb, var(--company-color) 30%, #fff); color:var(--company-color); background:#fff; }
-  #pageJournal .col-filter-btn.active{ background:var(--jv-accent); border-color:var(--jv-accent); color:#fff; }
-  #pageJournal .empty-state{ padding:44px 20px; background:#F7F9FC; border-top:1px solid var(--line); font-weight:600; }
   @media (max-width:900px){
     #pageJournal .journal-stats{ grid-template-columns:repeat(2,minmax(0,1fr)); }
   }
@@ -5551,8 +5608,6 @@
   };
 
   const MAX_PANES = 3;
-  // الصفحات اللى اتطبّق عليها التصميم الجديد (v2) — بنزوّد عليها لما التجربة تتأكد
-  const NEW_THEME_PAGES = ['journal'];
   const WS_LAYOUT_KEY = 'ui_workspace_layout'; // تفضيل عرض محلى بس (من غير بادئة khazna_ عشان مايتزامنش)
   let openPanes = [];
   let workspaceLayout = 'cols';
@@ -5632,7 +5687,7 @@
   function renderShell(){
     const isHome = openPanes.length === 0;
     document.body.classList.toggle('view-home', isHome);
-    document.body.classList.toggle('theme-v2', openPanes.length > 0 && openPanes.every(k => NEW_THEME_PAGES.includes(k)));
+    document.body.classList.toggle('theme-v2', !isHome);
     APP_PAGES.forEach(p => {
       const pg = document.getElementById(p.id);
       if(!pg) return;
