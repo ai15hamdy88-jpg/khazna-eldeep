@@ -965,7 +965,7 @@
   .ab-dock{ display:flex; gap:6px; flex-wrap:wrap; flex:1; min-width:0; }
   .ab-page{ display:inline-flex; align-items:center; border-radius:10px; border:1px solid rgba(255,255,255,.14); overflow:hidden; }
   .ab-page.open{ background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.26); }
-  .ab-page.shown{ box-shadow:inset 0 -3px 0 var(--tc); }
+  .ab-page.shown{ background:rgba(255,255,255,.22); border-color:rgba(255,255,255,.4); box-shadow:inset 0 -3px 0 var(--tc); }
   .ab-page-btn{
     display:inline-flex; align-items:center; gap:8px; background:none; border:none; color:#B6C6D4;
     font-family:'Cairo'; font-weight:700; font-size:12.5px; padding:7px 11px; cursor:pointer;
@@ -977,9 +977,7 @@
   .ab-page-x:hover{ color:#fff; background:rgba(255,255,255,.12); }
 
   #homeView{ container-type:inline-size; padding-bottom:40px; }
-  #workspace:not(.multi):not(.maxed) > #homeView.active{ max-width:1180px; margin:0 auto; padding-bottom:96px; }
-  #workspace.multi > #homeView.active, #workspace.maxed > #homeView.active{ background:#F3F6F9; }
-  #workspace.multi > #homeView.active .pane-head, #workspace.maxed > #homeView.active .pane-head{ background:#F3F6F9; }
+  #workspace > #homeView.active{ max-width:1180px; margin:0 auto; padding-bottom:96px; }
 
   .hm-hero{
     position:relative; overflow:hidden; background:var(--sh-ink); color:#F2F6FA; border-radius:24px;
@@ -1035,33 +1033,6 @@
   }
 
 
-  #workspace .pane-head{ display:none; }
-  #workspace.multi{ display:grid; gap:14px; align-items:start; }
-  #workspace.multi[data-layout="cols"]{ grid-template-columns:repeat(var(--cols), minmax(0,1fr)); }
-  #workspace.multi[data-layout="rows"]{ grid-template-columns:minmax(0,1fr); }
-  #workspace.multi > .page.active, #workspace.maxed > .page.active{
-    background:var(--card); border:1px solid var(--line); border-radius:16px; padding:0 14px 14px;
-    box-shadow:var(--shadow); min-width:0; overflow:auto; max-height:calc(100vh - 86px);
-  }
-  #workspace.multi[data-layout="rows"] > .page.active{ max-height:none; overflow:visible; }
-  #workspace.multi .pane-head, #workspace.maxed .pane-head{
-    display:flex; align-items:center; gap:8px; position:sticky; top:0; z-index:5; background:var(--card);
-    margin:0 -14px 12px; padding:10px 14px; box-shadow:inset 0 -3px 0 var(--tc);
-  }
-  #workspace.multi[data-layout="rows"] .pane-head{ position:static; }
-  .pane-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; background:var(--tc); }
-  .pane-title{ font-family:'Almarai',sans-serif; font-weight:800; font-size:14px; color:var(--ink); }
-  .pane-spacer{ flex:1; }
-  .pane-btn{
-    border:1px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:8px; width:28px; height:28px;
-    display:grid; place-items:center; cursor:pointer;
-  }
-  .pane-btn:hover{ color:var(--rose); border-color:var(--rose); }
-  @media (max-width:1000px){
-    #workspace.multi[data-layout="cols"]{ grid-template-columns:minmax(0,1fr); }
-    #workspace.multi > .page.active, #workspace.maxed > .page.active{ max-height:none; overflow:visible; }
-    #workspace.multi .pane-head, #workspace.maxed .pane-head{ position:static; }
-  }
   @media (max-width:820px){
     .hm-hero{ grid-template-columns:minmax(0,1fr); padding:22px 20px 18px; }
     .hm-big-row{ grid-template-columns:minmax(0,1fr); }
@@ -1438,8 +1409,6 @@
     </button>
     <span class="ab-sep"></span>
     <div class="ab-dock" id="abDock"></div>
-    <button type="button" class="ab-btn" id="abRestoreBtn" style="display:none;"></button>
-    <button type="button" class="ab-btn" id="abLayoutBtn" style="display:none;"></button>
   </div>
 
   <div id="homeView" class="page"><div id="homeBody"></div></div>
@@ -5596,105 +5565,83 @@
     journal(){ populateJournalPayFilter(); populateJournalSafeFilter(); renderJournalPage(); applyJournalCompanyVisibility(); },
     receipts(){ renderReceiptQueue(); },
     reports(){ initReportsPageIfNeeded(); renderReportsPage(); },
-    directory(){ renderDirectoryPage(); renderSystemLockSection(); },
+    directory(){
+      // لو فيه حاجة مكتوبة فى خانات الدليل (إضافة بند / كلمة سر) منعيدش رسم الصفحة عشان الكتابة ماتتمسحش لما ترجع للتاب
+      const pgEl = document.getElementById('pageDirectory');
+      const typing = [...pgEl.querySelectorAll('input[type="text"], input[type="password"], input:not([type])')].some(i => i.value && i.value.trim());
+      if(typing) return;
+      renderDirectoryPage(); renderSystemLockSection();
+    },
   };
 
-  /* الرئيسية صفحة زيها زى باقى الصفحات: بتفضل ظاهرة وأى صفحة تفتحها بتظهر جنبها، ومفيش حاجة بتتقفل غير بزرار ✕ */
+  /* ==== تابات زى المتصفح: الرئيسية فيها كل الصفحات، وأى صفحة تفتحها بتتفتح فى تاب جنب اللى قبلها وتتنقل بينهم ====
+     التاب بيفضل مفتوح وحالته محفوظة (اللى كتبته فيه مبيتمسحش) لحد ما تقفله بزرار ✕ */
   const HOME_PAGE = { key:'home', id:'homeView', title:'الرئيسية', short:'الرئيسية', color:'#E9B44C', icon:'home' };
   const NAV_ITEMS = [HOME_PAGE, ...APP_PAGES];
   PAGE_ON_SHOW.home = () => refreshHome(true);
 
-  const WS_LAYOUT_KEY = 'ui_workspace_layout'; // تفضيل عرض محلى بس (من غير بادئة khazna_ عشان مايتزامنش)
-  let openPanes = ['home'];   // الصفحات المفتوحة بالترتيب (حالتها محفوظة حتى لو اتقفلت)
-  let maxKey = null;          // صفحة متكبّرة مؤقتًا (الباقى بيفضل مفتوح)
-  let workspaceLayout = 'cols';
-  try{ if(localStorage.getItem(WS_LAYOUT_KEY) === 'rows') workspaceLayout = 'rows'; }catch(e){}
+  let openTabs = ['home'];   // التابات المفتوحة بالترتيب (الرئيسية دايمًا الأولى ومبتتقفلش)
+  let activeTab = 'home';    // التاب الظاهر دلوقتي
   let lastHomeHtml = '';
 
   const pageByKey = k => NAV_ITEMS.find(p => p.key === k);
-  const visibleKeys = () => (maxKey && openPanes.includes(maxKey)) ? [maxKey] : openPanes.slice();
 
   function runOnShow(key){
     const fn = PAGE_ON_SHOW[key];
     if(fn){ try{ fn(); }catch(err){ console.error('فشل تجهيز الصفحة', key, err); } }
   }
 
-  // الضغط على أى صفحة: لو مش مفتوحة بتتفتح جنب المفتوح (الرئيسية بتتفتح أول واحدة)، ولو مفتوحة بترجعلها
-  function openPage(name){
-    if(!pageByKey(name)) return;
-    const already = openPanes.includes(name);
-    if(!already){ if(name === 'home') openPanes.unshift(name); else openPanes.push(name); }
-    if(maxKey && maxKey !== name) maxKey = null;
+  function activateTab(key){
+    if(!openTabs.includes(key)) return;
+    activeTab = key;
     renderShell();
-    runOnShow(name);
-    if(already) focusPane(name);
+    runOnShow(key);
+    window.scrollTo({ top:0 });
   }
-  function switchPage(name){ openPage(name); }
-  function closePane(name){
-    if(openPanes.length <= 1) return;           // آخر صفحة مفتوحة مبتتقفلش
-    openPanes = openPanes.filter(k => k !== name);
-    if(maxKey === name) maxKey = null;
-    renderShell();
+  // فتح صفحة: لو مش مفتوحة بتتفتح فى تاب جديد جنب اللى قبله، ولو مفتوحة بتروحلها
+  function openTab(key){
+    if(!pageByKey(key)) return;
+    if(!openTabs.includes(key)) openTabs.push(key);
+    activateTab(key);
   }
-  function goHome(){ openPage('home'); }
-  function toggleMax(name){ maxKey = (maxKey === name) ? null : name; renderShell(); }
-  function focusPane(name){
-    const el = document.getElementById(pageByKey(name).id);
-    if(el) el.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  function closeTab(key){
+    if(key === 'home' || !openTabs.includes(key)) return;
+    const idx = openTabs.indexOf(key);
+    openTabs.splice(idx, 1);
+    if(activeTab === key){
+      activeTab = openTabs[Math.max(0, idx - 1)] || 'home';
+      renderShell();
+      runOnShow(activeTab);
+    }else{
+      renderShell();
+    }
   }
-  window.goHome = goHome;
-  window.openBeside = openPage;
+  function switchPage(name){ openTab(name); }
+  window.goHome = () => activateTab('home');
+  window.openBeside = openTab;
 
-  function renderDock(){
-    const vis = new Set(visibleKeys());
-    document.getElementById('abDock').innerHTML = NAV_ITEMS.map(p => {
-      const open = openPanes.includes(p.key);
-      const mark = p.key === 'home' ? shSvg('home', 14) : '<i></i>';
-      return `<span class="ab-page ${open ? 'open' : ''} ${vis.has(p.key) ? 'shown' : ''}" style="--tc:${p.color}">
-        <button type="button" class="ab-page-btn" data-page="${p.key}" title="${open ? 'الصفحة مفتوحة — اضغط للرجوع ليها' : 'افتح ' + p.title + ' جنب الصفحات المفتوحة'}">${mark}${p.short}</button>
-        ${(open && openPanes.length > 1) ? `<button type="button" class="ab-page-x" data-close="${p.key}" title="إغلاق ${p.short}">${shSvg('close', 12)}</button>` : ''}
+  function renderTabs(){
+    document.getElementById('abDock').innerHTML = openTabs.map(k => {
+      const p = pageByKey(k);
+      const active = k === activeTab;
+      const mark = k === 'home' ? shSvg('home', 14) : '<i></i>';
+      return `<span class="ab-page open ${active ? 'shown' : ''}" style="--tc:${p.color}">
+        <button type="button" class="ab-page-btn" data-tab="${k}" title="${p.title}">${mark}${p.short}</button>
+        ${k !== 'home' ? `<button type="button" class="ab-page-x" data-close="${k}" title="إغلاق ${p.short}">${shSvg('close', 12)}</button>` : ''}
       </span>`;
     }).join('');
-
-    const layoutBtn = document.getElementById('abLayoutBtn');
-    layoutBtn.style.display = visibleKeys().length > 1 ? '' : 'none';
-    layoutBtn.innerHTML = shSvg(workspaceLayout === 'cols' ? 'cols' : 'rows', 16) + (workspaceLayout === 'cols' ? 'جنب بعض' : 'فوق بعض');
-    layoutBtn.title = 'غيّر طريقة ترتيب الصفحات المفتوحة';
-
-    const restoreBtn = document.getElementById('abRestoreBtn');
-    restoreBtn.style.display = (maxKey && openPanes.length > 1) ? '' : 'none';
-    restoreBtn.innerHTML = shSvg('collapse', 16) + 'عرض كل الصفحات';
   }
 
   function renderShell(){
-    const vis = visibleKeys();
-    const onlyHome = vis.length === 1 && vis[0] === 'home';
-    document.body.classList.toggle('view-home', onlyHome);
-    document.body.classList.toggle('theme-v2', !onlyHome);
+    const isHome = activeTab === 'home';
+    document.body.classList.toggle('view-home', isHome);
+    document.body.classList.toggle('theme-v2', !isHome);
     NAV_ITEMS.forEach(p => {
       const pg = document.getElementById(p.id);
-      if(!pg) return;
-      const shown = vis.includes(p.key);
-      pg.classList.toggle('active', shown);
-      pg.style.order = shown ? String(openPanes.indexOf(p.key)) : '';
-      const solo = pg.querySelector('.pane-btn[data-act="solo"]');
-      if(solo){
-        const isMax = maxKey === p.key;
-        solo.innerHTML = shSvg(isMax ? 'collapse' : 'expand', 16);
-        solo.title = isMax ? 'رجوع لعرض كل الصفحات المفتوحة' : 'تكبير هذه الصفحة (الباقى بيفضل مفتوح)';
-        solo.style.display = openPanes.length > 1 ? '' : 'none';
-      }
-      const close = pg.querySelector('.pane-btn[data-act="close"]');
-      if(close) close.style.display = openPanes.length > 1 ? '' : 'none';
+      if(pg) pg.classList.toggle('active', p.key === activeTab);
     });
-    const ws = document.getElementById('workspace');
-    ws.classList.toggle('multi', vis.length > 1);
-    ws.classList.toggle('maxed', vis.length === 1 && !!maxKey && openPanes.length > 1);
-    ws.dataset.layout = workspaceLayout;
-    const n = vis.length;
-    ws.style.setProperty('--cols', String(n <= 3 ? Math.max(1, n) : (n === 4 ? 2 : 3)));
-    renderDock();
-    if(vis.includes('home')) refreshHome(true);
+    renderTabs();
+    if(isHome) refreshHome(true);
   }
 
   /* ----- محتوى الرئيسية ----- */
@@ -5705,7 +5652,7 @@
   }
 
   function tileHtml(p, big, metricHtml){
-    const open = openPanes.includes(p.key);
+    const open = openTabs.includes(p.key);
     const iconInner = p.mono ? p.mono : shSvg(p.icon, big ? 28 : 24);
     return `
       <article class="hm-tile ${big ? 'hm-big' : ''}" style="--tc:${p.color}" tabindex="0" role="button" data-open="${p.key}" aria-label="${p.title}">
@@ -5785,33 +5732,21 @@
       if(!pg) return;
       ws.appendChild(pg);
       pg.classList.remove('active');
-      pg.style.setProperty('--tc', p.color);
-      const head = document.createElement('div');
-      head.className = 'pane-head';
-      head.innerHTML = `<span class="pane-dot"></span><b class="pane-title">${p.title}</b><span class="pane-spacer"></span>
-        <button type="button" class="pane-btn" data-act="solo">${shSvg('expand', 16)}</button>
-        <button type="button" class="pane-btn" data-act="close" title="إغلاق الصفحة">${shSvg('close', 16)}</button>`;
-      head.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-act]');
-        if(!b) return;
-        if(b.dataset.act === 'close') closePane(p.key); else toggleMax(p.key);
-      });
-      pg.insertBefore(head, pg.firstChild);
     });
 
-    document.getElementById('abBrand').addEventListener('click', goHome);
+    document.getElementById('abBrand').addEventListener('click', () => activateTab('home'));
     document.getElementById('abDock').addEventListener('click', (e) => {
       const close = e.target.closest('[data-close]');
-      const page = e.target.closest('[data-page]');
-      if(close) closePane(close.dataset.close);
-      else if(page) openPage(page.dataset.page);
+      const tab = e.target.closest('[data-tab]');
+      if(close) closeTab(close.dataset.close);
+      else if(tab) activateTab(tab.dataset.tab);
     });
-    document.getElementById('abLayoutBtn').addEventListener('click', () => {
-      workspaceLayout = workspaceLayout === 'cols' ? 'rows' : 'cols';
-      try{ localStorage.setItem(WS_LAYOUT_KEY, workspaceLayout); }catch(e){}
-      renderShell();
+    // كليك بالعجلة (الوسط) على تاب = إغلاقه، زى المتصفح
+    document.getElementById('abDock').addEventListener('auxclick', (e) => {
+      if(e.button !== 1) return;
+      const tab = e.target.closest('[data-tab]');
+      if(tab){ e.preventDefault(); closeTab(tab.dataset.tab); }
     });
-    document.getElementById('abRestoreBtn').addEventListener('click', () => { maxKey = null; renderShell(); });
 
     const homeEl = document.getElementById('homeBody');
     homeEl.addEventListener('click', (e) => {
@@ -5819,14 +5754,14 @@
       if(!tile) return;
       const key = tile.dataset.open;
       if(key === 'archive'){ window.viewArchivedYear(); return; }
-      openPage(key);
+      openTab(key);
     });
     homeEl.addEventListener('keydown', (e) => {
       if((e.key === 'Enter' || e.key === ' ') && e.target.matches('.hm-tile')){ e.preventDefault(); e.target.click(); }
     });
 
     // تحديث أرقام الرئيسية لو سايبها ظاهرة (مثلاً بعد مزامنة من جهاز تانى)
-    setInterval(() => { if(!document.hidden && visibleKeys().includes('home')) refreshHome(false); }, 4000);
+    setInterval(() => { if(!document.hidden && activeTab === 'home') refreshHome(false); }, 4000);
 
     renderShell();
   }
